@@ -161,17 +161,16 @@ func (s *Schedule) setStart() error { // {{{
 
 	s.StartSecond = make([]time.Duration, 0)
 	s.StartMonth = make([]int, 0)
-
 	//查询全部schedule启动时间列表
 	sql := `SELECT s.scd_start,s.scd_start_month
 			FROM scd_start s
 			WHERE s.scd_id=?`
+	g.L.Debugln("[s.setStart] ", "\nsql=", sql)
 	rows, err := g.HiveConn.Query(sql, s.Id)
 	if err != nil {
 		e := fmt.Sprintf("[s.setStart] Exec sql [%s] error %s.\n", sql, err.Error())
 		return errors.New(e)
 	}
-	g.L.Debugln("[s.setStart] ", "\nsql=", sql)
 
 	for rows.Next() {
 		var td int64
@@ -198,6 +197,19 @@ func (s *Schedule) setStart() error { // {{{
 
 //getSchedule，从元数据库获取指定的Schedule信息。
 func (s *Schedule) getSchedule() error { // {{{
+	if s.Id == 0 {
+		s.Name = "DefaultScd"
+		s.Cyc = "ss"
+		s.Jobs = make([]*Job, 0)
+		s.Tasks = make([]*Task, 0)
+		s.StartSecond = append(s.StartSecond, time.Duration(0))
+		s.StartMonth = append(s.StartMonth, int(0))
+		s.Jobs = make([]*Job, 0)
+		s.Tasks = make([]*Task, 0)
+		s.isRefresh = make(chan bool)
+		s.JobCnt, s.TaskCnt = 0, 0
+		return nil
+	}
 	//查询全部schedule列表
 	sql := `SELECT scd.scd_id,
 				scd.scd_name,
@@ -220,7 +232,7 @@ func (s *Schedule) getSchedule() error { // {{{
 	g.L.Debugln("[s.getSchedule] ", "\nsql=", sql)
 
 	id := -1
-	s.StartSecond = make([]time.Duration, 0)
+	//s.StartSecond = make([]time.Duration, 0)
 	//循环读取记录，格式化后存入变量ｂ
 	for rows.Next() {
 		err = rows.Scan(&id, &s.Name, &s.Count, &s.Cyc,
@@ -247,6 +259,11 @@ func (s *Schedule) getSchedule() error { // {{{
 
 //从元数据库获取Job信息。
 func (j *Job) getJob() error { // {{{
+	if j.Id == 0 {
+		j.ScheduleCyc = "ss"
+		j.Name = "DefaultJob"
+		return nil
+	}
 	//查询全部Job列表
 	sql := `SELECT job.job_id,
 			   job.job_name,
@@ -291,7 +308,7 @@ func (j *Job) getJob() error { // {{{
 func (j *Job) add() (err error) { // {{{
 	j.setNewId()
 	j.Tasks = make(map[string]*Task)
-	j.CreateTime, j.ModifyTime = time.Now(), time.Now()
+	j.CreateTime, j.ModifyTime = NowTimePtr(), NowTimePtr()
 	sql := `INSERT INTO scd_job
             (job_id, job_name, job_desc, prev_job_id,
              next_job_id, create_user_id, create_time,
@@ -661,10 +678,10 @@ func (t *Task) add() (err error) { // {{{
 		return errors.New(e)
 	}
 
-	t.RelTasksId = make([]int64, 0)
-	t.RelTasks = make(map[string]*Task)
-	t.Attr = make(map[string]string)
-	t.Param = make([]string, 0)
+	//t.RelTasksId = make([]int64, 0)
+	//t.RelTasks = make(map[string]*Task)
+	//	t.Attr = make(map[string]string)
+	//t.Param = make([]string, 0)
 	return err
 } // }}}
 
@@ -776,17 +793,21 @@ func (s *ExecSchedule) Log() (err error) { // {{{
 						 ?,
 						 ?,
 						 ?)`
-		_, err = g.LogConn.Exec(sql, &s.batchId, &s.schedule.Id, &s.startTime, &s.endTime, &s.state, &s.result, &s.execType)
+		result, err := g.LogConn.Exec(sql, &s.batchId, &s.schedule.Id, &s.startTime, &s.endTime, &s.state, &s.result, &s.execType)
+		if err == nil {
+			Id, _ := result.LastInsertId()
+			s.LogId = int(Id)
+		}
+		return err
 	} else {
 		sql := `UPDATE scd_schedule_log
 						 set start_time=?,
 						 end_time=?,
 						 state=?,
 						 result=?
-				WHERE batch_id=?`
-		_, err = g.LogConn.Exec(sql, &s.startTime, &s.endTime, &s.state, &s.result, &s.batchId)
+				WHERE log_id=?`
+		_, err = g.LogConn.Exec(sql, &s.startTime, &s.endTime, &s.state, &s.result, &s.LogId)
 	}
-
 	return err
 } // }}}
 
@@ -809,15 +830,20 @@ func (j *ExecJob) Log() (err error) { // {{{
 						 ?,
 						 ?,
 						 ?)`
-		_, err = g.LogConn.Exec(sql, &j.batchJobId, &j.batchId, &j.job.Id, &j.startTime, &j.endTime, &j.state, &j.result, &j.execType)
+		result, err := g.LogConn.Exec(sql, &j.batchJobId, &j.batchId, &j.job.Id, &j.startTime, &j.endTime, &j.state, &j.result, &j.execType)
+		if err == nil {
+			Id, _ := result.LastInsertId()
+			j.LogId = int(Id)
+		}
+		return err
 	} else {
 		sql := `UPDATE scd_job_log
 						 set start_time=?,
 						 end_time=?,
 						 state=?,
 						 result=?
-				WHERE batch_job_id=?`
-		_, err = g.LogConn.Exec(sql, &j.startTime, &j.endTime, &j.state, &j.result, &j.batchJobId)
+				WHERE log_id=?`
+		_, err = g.LogConn.Exec(sql, &j.startTime, &j.endTime, &j.state, &j.result, &j.LogId)
 	}
 
 	return err
@@ -841,14 +867,19 @@ func (t *ExecTask) Log() (err error) { // {{{
 						 ?,
 						 ?,
 						 ?)`
-		_, err = g.LogConn.Exec(sql, &t.batchTaskId, &t.batchJobId, &t.batchId, &t.task.Id, &t.startTime, &t.endTime, &t.state, &t.execType)
+		result, err := g.LogConn.Exec(sql, &t.batchTaskId, &t.batchJobId, &t.batchId, &t.task.Id, &t.startTime, &t.endTime, &t.state, &t.execType)
+		if err == nil {
+			Id, _ := result.LastInsertId()
+			t.LogId = int(Id)
+		}
+		return err
 	} else {
 		sql := `UPDATE scd_task_log
 						 set start_time=?,
 						 end_time=?,
 						 state=?
-				WHERE batch_task_id=?`
-		_, err = g.LogConn.Exec(sql, &t.startTime, &t.endTime, &t.state, &t.batchTaskId)
+				WHERE log_id=?`
+		_, err = g.LogConn.Exec(sql, &t.startTime, &t.endTime, &t.state, &t.LogId)
 	}
 
 	return err

@@ -28,8 +28,8 @@ type ExecSchedule struct { // {{{
 	lock           sync.Mutex
 	batchId        string              //批次ID，规则scheduleId + 周期开始时间(不含周期内启动时间)
 	schedule       *Schedule           //调度
-	startTime      time.Time           //开始时间
-	endTime        time.Time           //结束时间
+	startTime      *time.Time          //开始时间
+	endTime        *time.Time          //结束时间
 	state          int8                //状态 0.不满足条件未执行 1. 执行中 2. 暂停 3. 完成 4.意外中止
 	result         float32             //结果,调度中执行成功任务的百分比
 	execType       int8                //执行类型 1. 自动定时调度 2.手动人工调度 3.修复执行
@@ -40,12 +40,13 @@ type ExecSchedule struct { // {{{
 	taskCnt        int                 //调度中任务数量
 	successTaskCnt int                 //执行成功任务数量
 	failTaskCnt    int                 //执行失败任务数量
+	LogId          int                 //调度日志Id
 } // }}}
 
 //初始化调度的执行结构，使之包含完整的执行链。
 func (es *ExecSchedule) InitExecSchedule() (err error) { // {{{
 	if err = es.Log(); err != nil {
-		return errors.New(fmt.Sprintf("\n[es.InitExecSchedule] %s", err.Error()))
+		return errors.New(fmt.Sprintf("\n[es.InitExecSchedule] Save Log Failed %s", err.Error()))
 	}
 
 	if es.schedule.Job != nil {
@@ -61,7 +62,7 @@ func (es *ExecSchedule) InitExecSchedule() (err error) { // {{{
 
 //ExecSchedule执行前状态记录
 func (es *ExecSchedule) Start() (err error) { // {{{
-	es.startTime = time.Now().Local()
+	es.startTime = NowTimePtr()
 	es.state = 1
 	if err = es.Log(); err != nil {
 		es.state = 4
@@ -84,7 +85,7 @@ func (es *ExecSchedule) TaskDone(et *ExecTask) (finish bool, err error) { // {{{
 		g.Schedules.RemoveExecSchedule(es.batchId)
 
 		//全部完成后，写入日志存储至数据库，设置下次启动时间
-		es.endTime = time.Now().Local()
+		es.endTime = NowTimePtr()
 		es.state = 3
 		if err = es.Log(); err != nil {
 			es.state = 4
@@ -219,14 +220,15 @@ type ExecJob struct { // {{{
 	batchJobId string              //作业批次ID，批次ID + 作业ID
 	batchId    string              //批次ID，规则scheduleId + 周期开始时间(不含周期内启动时间)
 	job        *Job                //作业
-	startTime  time.Time           //开始时间
-	endTime    time.Time           //结束时间
+	startTime  *time.Time          //开始时间
+	endTime    *time.Time          //结束时间
 	state      int8                //状态 0.不满足条件未执行 1. 执行中 2. 暂停 3. 完成 4.意外中止
 	result     float32             //结果执行成功任务的百分比
 	nextJob    *ExecJob            //下一个作业
 	execType   int8                //执行类型1. 自动定时调度 2.手动人工调度 3.修复执行
 	execTasks  map[int64]*ExecTask //任务执行信息
 	taskCnt    int                 //作业中任务数量
+	LogId      int                 //调度日志Id
 } // }}}
 
 //根据传入的batchId和Job参数来构建一个调度的执行结构，并返回。
@@ -273,8 +275,8 @@ func (ej *ExecJob) InitExecJob(es *ExecSchedule) (err error) { // {{{
 
 //设置ExecJob的状态为开始，并记录到log中
 func (ej *ExecJob) Start() (err error) { // {{{
-	if ej.startTime.IsZero() {
-		ej.startTime = time.Now().Local()
+	if ej.startTime == nil {
+		ej.startTime = NowTimePtr()
 		ej.state = 1
 		if err = ej.Log(); err != nil {
 			ej.state = 4
@@ -292,7 +294,7 @@ func (ej *ExecJob) TaskDone(et *ExecTask) (err error) { // {{{
 	//计算任务完成百分比
 	ej.result = float32(ej.job.TaskCnt-ej.taskCnt) / float32(ej.job.TaskCnt)
 	if ej.taskCnt == 0 { //作业结束
-		ej.endTime = time.Now().Local()
+		ej.endTime = NowTimePtr()
 		ej.state = 3
 		if err = ej.Log(); err != nil {
 			ej.state = 4
@@ -310,14 +312,15 @@ type ExecTask struct { // {{{
 	batchJobId    string              //作业批次ID，批次ID + 作业ID
 	batchId       string              //批次ID，规则scheduleId + 周期开始时间(不含周期内启动时间)
 	task          *Task               //任务
-	startTime     time.Time           //开始时间
-	endTime       time.Time           //结束时间
+	startTime     *time.Time          //开始时间
+	endTime       *time.Time          //结束时间
 	state         int8                //状态 0.初始状态 1. 执行中 2. 暂停 3. 完成 4.意外中止 5.忽略
 	execType      int8                //执行类型 1. 自动定时调度 2.手动人工调度 3.修复执行
 	execJob       *ExecJob            //任务所属作业
 	output        string              //任务输出
 	nextExecTasks map[int64]*ExecTask //下级任务执行信息
 	relExecTasks  map[int64]*ExecTask //依赖的任务
+	LogId         int                 //调度日志Id
 } // }}}
 
 //根据传入的batchId和Job参数来构建一个调度的执行结构，并返回。
@@ -368,7 +371,7 @@ func (et *ExecTask) Run(taskChan chan *ExecTask) { // {{{
 		if err := recover(); err != nil {
 			var buf bytes.Buffer
 			buf.Write(debug.Stack())
-			et.endTime = time.Now().Local()
+			et.endTime = NowTimePtr()
 			et.state = 4
 			g.L.Warningln("task run error", "batchTaskId[", et.batchTaskId, "] TaskName=",
 				et.task.Name, "output=", et.output, "err=", err, " stack=", buf.String())
@@ -386,7 +389,7 @@ func (et *ExecTask) Run(taskChan chan *ExecTask) { // {{{
 		return
 	}
 
-	et.startTime = time.Now().Local()
+	et.startTime = NowTimePtr()
 	et.state = 1
 	et.Log()
 	g.L.Infoln("task", et.task.Name,
@@ -421,7 +424,7 @@ func (et *ExecTask) Run(taskChan chan *ExecTask) { // {{{
 	}
 
 	et.output = et.output + rl.Stdout
-	et.endTime = time.Now().Local()
+	et.endTime = NowTimePtr()
 	et.Log()
 
 	g.L.Infoln("task", et.task.Name, "is end batchTaskId[", et.batchTaskId, "] state =",

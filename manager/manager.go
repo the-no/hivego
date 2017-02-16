@@ -6,7 +6,7 @@ import (
 	"github.com/martini-contrib/binding"
 	"github.com/martini-contrib/render"
 	"github.com/martini-contrib/web"
-	"github.com/rprp/hivego/schedule"
+	"github.com/the-no/hivego/schedule"
 	"log"
 	"net/http"
 	"strconv"
@@ -74,6 +74,34 @@ func controller(m *martini.ClassicMartini) { // {{{
 		r.Delete("/:sid/jobs/:jid/tasks/:id/reltask/:relid", DeleteRelTask)
 	})
 
+	m.Group("/jobs", func(r martini.Router) {
+		//Job部分
+		r.Get("/:id", GetJobsForSchedule)
+		r.Post("", binding.Bind(schedule.Job{}), AddJob)
+		r.Put("/:id", binding.Bind(schedule.Job{}), UpdateJob)
+		r.Delete("/:id", DeleteJob)
+
+		//Task部分
+		r.Post("/:jid/tasks", binding.Bind(schedule.Task{}), AddTask)
+		r.Put("/:jid/tasks/:id", binding.Bind(schedule.Task{}), UpdateTask)
+		r.Delete("/:jid/tasks/:id", DeleteTask)
+
+		//TaskRelation部分
+		r.Post("/jid/tasks/:id/reltask/:relid", AddRelTask)
+		r.Delete("/:jid/tasks/:id/reltask/:relid", DeleteRelTask)
+	})
+
+	m.Group("/tasks", func(r martini.Router) {
+		//Task部分
+		r.Post("", binding.Bind(&schedule.Task{}), AddTask)
+		r.Put("/:id", binding.Bind(schedule.Task{}), UpdateTask)
+		r.Delete("/:id", DeleteTask)
+
+		//TaskRelation部分
+		r.Post("/:id/reltask/:relid", AddRelTask)
+		r.Delete("/:id/reltask/:relid", DeleteRelTask)
+	})
+
 } // }}}
 
 //返回当前的调度列表
@@ -100,7 +128,7 @@ func GetScheduleById(params martini.Params, r render.Render, Ss *schedule.Schedu
 } // }}}
 
 //添加Schedule
-func AddSchedule(params martini.Params, r render.Render, Ss *schedule.ScheduleManager, scd schedule.Schedule) { // {{{
+func AddSchedule(params martini.Params, r render.Render, Ss *schedule.ScheduleManager, scd *schedule.Schedule) { // {{{
 	if scd.Name == "" {
 		e := fmt.Sprintf("[AddSchedule] Schedule name is required")
 		g.L.Warningln(e)
@@ -108,7 +136,7 @@ func AddSchedule(params martini.Params, r render.Render, Ss *schedule.ScheduleMa
 		return
 	}
 
-	err := Ss.AddSchedule(&scd)
+	err := Ss.AddSchedule(scd)
 	if err != nil {
 		e := fmt.Sprintf("[AddSchedule] add schedule error %s.", err.Error())
 		g.L.Warningln(e)
@@ -123,7 +151,7 @@ func AddSchedule(params martini.Params, r render.Render, Ss *schedule.ScheduleMa
 //updateSchedule获取客户端发送的Schedule信息，并调用Schedule的Update方法将其
 //持久化并更新至Schedule中。
 //成功返回更新后的Schedule信息
-func UpdateSchedule(params martini.Params, r render.Render, Ss *schedule.ScheduleManager, scd schedule.Schedule) { // {{{
+func UpdateSchedule(params martini.Params, r render.Render, Ss *schedule.ScheduleManager, scd *schedule.Schedule) { // {{{
 	if scd.Name == "" {
 		e := fmt.Sprintf("[UpdateSchedule] Schedule name is required")
 		g.L.Warningln(e)
@@ -184,7 +212,7 @@ func DeleteJob(params martini.Params, r render.Render, Ss *schedule.ScheduleMana
 //持久化并添加至Schedule中。
 //成功返回添加好的Job信息
 //错误返回err信息
-func AddJob(r render.Render, Ss *schedule.ScheduleManager, job schedule.Job) { // {{{
+func AddJob(r render.Render, Ss *schedule.ScheduleManager, job *schedule.Job) { // {{{
 	if job.Name == "" {
 		e := fmt.Sprintf("[AddJob] Job name is required")
 		g.L.Warningln(e)
@@ -195,9 +223,9 @@ func AddJob(r render.Render, Ss *schedule.ScheduleManager, job schedule.Job) { /
 		job.ScheduleCyc = s.Cyc
 		job.CreateUserId = 1
 		job.ModifyUserId = 1
-		job.CreateTime = time.Now()
-		job.ModifyTime = time.Now()
-		if err := s.AddJob(&job); err != nil {
+		job.CreateTime = NowTimePtr()
+		job.ModifyTime = NowTimePtr()
+		if err := s.AddJob(job); err != nil {
 			e := fmt.Sprintf("[AddJob] add job error %s.", err.Error())
 			g.L.Warningln(e)
 			r.JSON(500, e)
@@ -216,7 +244,7 @@ func AddJob(r render.Render, Ss *schedule.ScheduleManager, job schedule.Job) { /
 //updateJob获取客户端发送的Job信息，并调用Schedule的UpdateJob方法将其
 //持久化并更新至Schedule中。
 //成功返回更新后的Job信息
-func UpdateJob(r render.Render, Ss *schedule.ScheduleManager, job schedule.Job) { // {{{
+func UpdateJob(r render.Render, Ss *schedule.ScheduleManager, job *schedule.Job) { // {{{
 	if job.Name == "" {
 		e := fmt.Sprintf("[UpdateJob] Job name is required")
 		g.L.Warningln(e)
@@ -224,7 +252,7 @@ func UpdateJob(r render.Render, Ss *schedule.ScheduleManager, job schedule.Job) 
 		return
 	}
 	if s := Ss.GetScheduleById(int64(job.ScheduleId)); s != nil {
-		if err := s.UpdateJob(&job); err != nil {
+		if err := s.UpdateJob(job); err != nil {
 			e := fmt.Sprintf("[UpdateJob] update job error %s.", err.Error())
 			g.L.Warningln(e)
 			r.JSON(500, e)
@@ -245,12 +273,12 @@ func UpdateJob(r render.Render, Ss *schedule.ScheduleManager, job schedule.Job) 
 //成功后根据其中的JobId找到对应Job将其添加
 //成功返回添加好的Job信息
 //错误返回err信息
-func AddTask(params martini.Params, r render.Render, Ss *schedule.ScheduleManager, task schedule.Task) { // {{{
-	sid, sidok := params["sid"]
+func AddTask(params martini.Params, r render.Render, Ss *schedule.ScheduleManager, task *schedule.Task) { // {{{
+	sid, _ := params["sid"]
 	ssid, _ := strconv.Atoi(sid)
 
-	if !sidok || task.Name == "" || task.JobId == 0 {
-		e := fmt.Sprintf("[AddTask] sid or Job name is required")
+	if task.Name == "" {
+		e := fmt.Sprintf("[AddTask] name is required")
 		g.L.Warningln(e)
 		r.JSON(500, e)
 		return
@@ -259,11 +287,11 @@ func AddTask(params martini.Params, r render.Render, Ss *schedule.ScheduleManage
 	task.TaskType = 1
 	task.CreateUserId = 1
 	task.ModifyUserId = 1
-	task.CreateTime = time.Now()
-	task.ModifyTime = time.Now()
+	task.CreateTime = NowTimePtr()
+	task.ModifyTime = NowTimePtr()
 
 	if s := Ss.GetScheduleById(int64(ssid)); s != nil {
-		err := s.AddTask(&task)
+		err := s.AddTask(task)
 		if err != nil {
 			e := fmt.Sprintf("[AddTask] add task error %s.", err.Error())
 			g.L.Warningln(e)
@@ -476,3 +504,7 @@ func Logger() martini.Handler { // {{{
 		log.Println(content)
 	}
 } // }}}
+func NowTimePtr() *time.Time {
+	t := time.Now()
+	return &t
+}

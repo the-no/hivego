@@ -14,7 +14,6 @@ func getCountDown(cyc string, sm []int, ss []time.Duration) (countDown time.Dura
 
 	//按周期取整
 	s := TruncDate(cyc, now)
-
 	for i, st := range ss {
 		if s.AddDate(0, sm[i], 0).Add(st).After(now) {
 			//执行时间在当前时间之后，设置标志，跳出循环进行下一步
@@ -229,3 +228,8 @@ func printSchedule(scds map[int64]*Schedule) { // {{{
 
 	}
 } // }}}
+
+func NowTimePtr() *time.Time {
+	t := time.Now()
+	return &t
+}

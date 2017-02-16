@@ -24,7 +24,7 @@ var (
 func init() { // {{{
 	//设置log模块的默认格式
 	l.Formatter = new(logrus.TextFormatter) // default
-	l.Level = logrus.Info
+	l.Level = logrus.DebugLevel
 	runtime.GOMAXPROCS(16)
 } // }}}
 

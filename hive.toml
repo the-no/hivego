@@ -1,8 +1,8 @@
 # This is a TOML document. 
 
 maxprocs = 8
-port = "9527"
-managerport = "3000"
+port = "8527"
+managerport = "4000"
 
 #0.Panic 1.Fatal 2.Error 3.Warn 4.Info 5.Debug
 loglevel = 4
@@ -18,11 +18,11 @@ memprof="memprofile"
   #Dbtype = "sqlite3"
   #Conn = "hive_tp.db"
   Dbtype = "mysql"
-  Conn = "root:@tcp(127.0.0.1:3306)/hive?charset=utf8&parseTime=true&loc=Local"
+  Conn = "root:root@tcp(127.0.0.1:3306)/hive2?charset=utf8&parseTime=true&loc=Local"
 
   [dbinfo.logdb]
   #Dbtype = "sqlite3"
   #Conn = "log_tp.db"
   Dbtype = "mysql"
-  Conn = "root:@tcp(127.0.0.1:3306)/hive?charset=utf8&parseTime=true&loc=Local"
+  Conn = "root:root@tcp(127.0.0.1:3306)/hive2?charset=utf8&parseTime=true&loc=Local"
 

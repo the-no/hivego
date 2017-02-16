@@ -25,9 +25,9 @@ type Task struct { // {{{
 	RelTasks     map[string]*Task  //`json:"-"` //依赖的任务
 	RelTaskCnt   int64             //依赖的任务数量
 	CreateUserId int64             //创建人
-	CreateTime   time.Time         //创人
+	CreateTime   *time.Time        //创人
 	ModifyUserId int64             //修改人
-	ModifyTime   time.Time         //修改时间
+	ModifyTime   *time.Time        //修改时间
 } // }}}
 
 //根据Task.Id从元数据库获取信息初始化Task结构，包含以下动作

@@ -30,7 +30,7 @@ func DefaultGlobal() *GlobalConfigStruct { // {{{
 	sc := &GlobalConfigStruct{}
 	sc.L = logrus.New()
 	sc.L.Formatter = new(logrus.TextFormatter) // default
-	sc.L.Level = logrus.Info
+	sc.L.Level = logrus.DebugLevel
 	sc.Port = ":3128"
 	sc.ManagerPort = ":3000"
 	sc.Schedules = &ScheduleManager{Global: sc, ExecScheduleList: make(map[string]*ExecSchedule)}
@@ -40,7 +40,8 @@ func DefaultGlobal() *GlobalConfigStruct { // {{{
 //ScheduleManager通过成员ScheduleList持有全部的Schedule。
 //并提供获取、增加、删除以及启动、停止Schedule的功能。
 type ScheduleManager struct { // {{{
-	ScheduleList     []*Schedule              //全部的调度列表
+	ScheduleList     []*Schedule //全部的调度列表
+	DefaultScd       *Schedule
 	ExecScheduleList map[string]*ExecSchedule //当前执行的调度列表
 	Global           *GlobalConfigStruct      //配置信息
 } // }}}
@@ -54,6 +55,14 @@ func (sl *ScheduleManager) InitScheduleList() { // {{{
 		e := fmt.Sprintf("[sl.InitScheduleList] init scheduleList error %s.\n", err.Error())
 		g.L.Fatalln(e)
 	}
+	def_scd := &Schedule{
+		Name:        "DefaultScd",
+		Cyc:         "ss",
+		StartSecond: []time.Duration{time.Duration(0)},
+		StartMonth:  []int{0},
+	}
+	sl.ScheduleList = append(sl.ScheduleList, def_scd)
+
 } // }}}
 
 //增加一个调度执行结构
@@ -72,20 +81,21 @@ func (sl *ScheduleManager) RemoveExecSchedule(batchId string) { // {{{
 
 //开始监听Schedule，遍历列表中的Schedule并启动它的Timer方法。
 func (sl *ScheduleManager) StartListener() { // {{{
+	//	sl.StartDefaultListener()
 	for _, scd := range sl.ScheduleList {
 		//从元数据库初始化调度链信息
-		err := scd.InitSchedule()
-		if err != nil {
-			e := fmt.Sprintf("[sl.StartListener] init schedule [%d] error %s.\n", scd.Id, err.Error())
-			g.L.Warningln(e)
-			return
-		}
-
+		/*	err := scd.InitSchedule()
+			if err != nil {
+				e := fmt.Sprintf("[sl.StartListener] init schedule [%d] error %s.\n", scd.Id, err.Error())
+				g.L.Warningln(e)
+				return
+			}
+			fmt.Println("Start Timer", scd.Name)*/
 		//启动监听，按时启动Schedule
 		go scd.Timer()
 	}
 
-} // }}}
+}
 
 //启动指定的Schedule，从ScheduleList中获取到指定id的Schedule后，从元数据库获取
 //Schedule的信息初始化一下调度链，然后调用它自身的Timer方法，启动监听。
@@ -227,7 +237,6 @@ func (s *Schedule) Timer() { // {{{
 			g.L.Warningln(e)
 			return
 		}
-
 		//启动线程执行调度任务
 		go es.Run()
 	case <-s.isRefresh:
@@ -235,6 +244,7 @@ func (s *Schedule) Timer() { // {{{
 		g.L.Println(l)
 		return
 	}
+
 	return
 } // }}}
 
@@ -247,10 +257,10 @@ func (s *Schedule) InitSchedule() error { // {{{
 		e := fmt.Sprintf("\n[s.InitSchedule] get schedule [%d] error %s.", s.Id, err.Error())
 		return errors.New(e)
 	}
-
-	if s.JobId == 0 {
-		return nil
-	}
+	/*
+		if s.JobId == 0 {
+			return nil
+		}*/
 
 	tj := &Job{Id: s.JobId}
 	err = tj.getJob()
@@ -270,7 +280,6 @@ func (s *Schedule) InitSchedule() error { // {{{
 		s.JobCnt++
 		j = j.NextJob
 	}
-
 	return nil
 } // }}}
 
@@ -416,7 +425,7 @@ func (s *Schedule) UpdateJob(job *Job) error { // {{{
 	}
 
 	j.Name, j.Desc = job.Name, job.Desc
-	j.ModifyTime, j.ModifyUserId = time.Now(), job.ModifyUserId
+	j.ModifyTime, j.ModifyUserId = NowTimePtr(), job.ModifyUserId
 	err = j.update()
 	if err != nil {
 		e := fmt.Sprintf("\n[s.UpdateJob] update job [%d] error %s.", j.Id, err.Error())

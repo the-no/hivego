@@ -20,9 +20,9 @@ type Job struct { // {{{
 	Tasks        map[string]*Task //作业中的任务
 	TaskCnt      int              //调度中任务数量
 	CreateUserId int64            //创建人
-	CreateTime   time.Time        //创人
+	CreateTime   *time.Time       //创人
 	ModifyUserId int64            //修改人
-	ModifyTime   time.Time        //修改时间
+	ModifyTime   *time.Time       //修改时间
 } // }}}
 
 //根据Job.Id初始化Job结构，从元数据库获取Job的基本信息初始化后
@@ -112,7 +112,7 @@ func (j *Job) UpdateTask(task *Task) (err error) { // {{{
 	t.Name, t.Desc, t.Address = task.Name, task.Desc, task.Address
 	t.TaskType, t.TaskCyc, t.StartSecond = task.TaskType, task.TaskCyc, task.StartSecond
 	t.Cmd, t.TimeOut, t.Param = task.Cmd, task.TimeOut, task.Param
-	t.Attr, t.ModifyUserId, t.ModifyTime = task.Attr, task.ModifyUserId, time.Now()
+	t.Attr, t.ModifyUserId, t.ModifyTime = task.Attr, task.ModifyUserId, NowTimePtr()
 
 	if err := t.UpdateTask(); err != nil {
 		e := fmt.Sprintf("\n[j.UpdateTask] UpdateTask error %s.", err.Error())
