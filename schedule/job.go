@@ -8,9 +8,12 @@ import (
 
 //作业信息结构
 type Job struct { // {{{
-	Id           int64            //作业ID
-	ScheduleId   int64            //调度ID
-	ScheduleCyc  string           //调度周期
+	Id           int64  //作业ID
+	ScheduleId   int64  //调度ID
+	ScheduleCyc  string //调度周期
+	ReInit       int    //
+	ExecType     int8   //
+	Disabled     int8
 	Name         string           //作业名称
 	Desc         string           //作业说明
 	PreJobId     int64            //上级作业ID
@@ -23,34 +26,36 @@ type Job struct { // {{{
 	CreateTime   *time.Time       //创人
 	ModifyUserId int64            //修改人
 	ModifyTime   *time.Time       //修改时间
+	DeletedAt    *time.Time
 } // }}}
 
 //根据Job.Id初始化Job结构，从元数据库获取Job的基本信息初始化后
 //继续初始化Job所属的Task列表，同时递归调用自身，初始化下级Job结构
 //失败返回error信息。
 func (j *Job) InitJob(s *Schedule) error { // {{{
-	err := j.getJob()
-	if err != nil {
-		e := fmt.Sprintf("\n[j.InitJob] init job [%d] error %s.", j.Id, err.Error())
-		return errors.New(e)
-	}
 
-	if j.PreJobId != 0 {
-		j.PreJob = &Job{Id: j.PreJobId}
-		err = j.PreJob.getJob()
+	/*	err := j.getJob()
 		if err != nil {
-			e := fmt.Sprintf("\n[j.InitJob] get pre job [%d] error %s.", j.PreJobId, err.Error())
+			e := fmt.Sprintf("\n[j.InitJob] init job [%d] error %s.", j.Id, err.Error())
 			return errors.New(e)
-		}
-	}
+		}*/
+	/*
+		if j.PreJobId != 0 {
+			j.PreJob = &Job{Id: j.PreJobId}
+			err = j.PreJob.getJob()
+			if err != nil {
+				e := fmt.Sprintf("\n[j.InitJob] get pre job [%d] error %s.", j.PreJobId, err.Error())
+				return errors.New(e)
+			}
+		}*/
 
-	err = j.InitTasksForJob(s)
+	err := j.InitTasksForJob(s)
 	if err != nil {
 		e := fmt.Sprintf("\n[j.InitJob] init task for job [%d] error %s.", j.Id, err.Error())
 		return errors.New(e)
 	}
 
-	//获取下级作业
+	/*//获取下级作业
 	if j.NextJobId == 0 {
 		return nil
 	}
@@ -67,7 +72,7 @@ func (j *Job) InitJob(s *Schedule) error { // {{{
 		e := fmt.Sprintf("\n[j.InitJob] init job [%d] error %s.", nj.Id, err.Error())
 		return errors.New(e)
 	}
-	j.NextJob = nj
+	j.NextJob = nj*/
 
 	return nil
 } // }}}

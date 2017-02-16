@@ -206,7 +206,7 @@ func printSchedule(scds map[int64]*Schedule) { // {{{
 	for _, scd := range scds {
 		fmt.Println(scd.Name, "\tjobs=", scd.JobCnt, " tasks=", scd.TaskCnt)
 		//打印调度中的作业信息
-		for j := scd.Job; j != nil; {
+		for _, j := range scd.Jobs {
 			fmt.Println("\t--------------------------------------")
 			fmt.Println("\t", j.Name)
 			//打印作业中的任务信息
@@ -222,8 +222,7 @@ func printSchedule(scds map[int64]*Schedule) { // {{{
 				fmt.Print("]\n")
 			}
 			fmt.Print("\n")
-			j = j.NextJob
-
+			//j = j.NextJob
 		}
 
 	}

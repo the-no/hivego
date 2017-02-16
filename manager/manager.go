@@ -93,7 +93,7 @@ func controller(m *martini.ClassicMartini) { // {{{
 
 	m.Group("/tasks", func(r martini.Router) {
 		//Task部分
-		r.Post("", binding.Bind(&schedule.Task{}), AddTask)
+		r.Post("", binding.Bind(schedule.Task{}), AddTask)
 		r.Put("/:id", binding.Bind(schedule.Task{}), UpdateTask)
 		r.Delete("/:id", DeleteTask)
 
@@ -128,7 +128,7 @@ func GetScheduleById(params martini.Params, r render.Render, Ss *schedule.Schedu
 } // }}}
 
 //添加Schedule
-func AddSchedule(params martini.Params, r render.Render, Ss *schedule.ScheduleManager, scd *schedule.Schedule) { // {{{
+func AddSchedule(params martini.Params, r render.Render, Ss *schedule.ScheduleManager, scd schedule.Schedule) { // {{{
 	if scd.Name == "" {
 		e := fmt.Sprintf("[AddSchedule] Schedule name is required")
 		g.L.Warningln(e)
@@ -136,7 +136,7 @@ func AddSchedule(params martini.Params, r render.Render, Ss *schedule.ScheduleMa
 		return
 	}
 
-	err := Ss.AddSchedule(scd)
+	err := Ss.AddSchedule(&scd)
 	if err != nil {
 		e := fmt.Sprintf("[AddSchedule] add schedule error %s.", err.Error())
 		g.L.Warningln(e)
@@ -151,13 +151,14 @@ func AddSchedule(params martini.Params, r render.Render, Ss *schedule.ScheduleMa
 //updateSchedule获取客户端发送的Schedule信息，并调用Schedule的Update方法将其
 //持久化并更新至Schedule中。
 //成功返回更新后的Schedule信息
-func UpdateSchedule(params martini.Params, r render.Render, Ss *schedule.ScheduleManager, scd *schedule.Schedule) { // {{{
+func UpdateSchedule(params martini.Params, r render.Render, Ss *schedule.ScheduleManager, scd schedule.Schedule) { // {{{
 	if scd.Name == "" {
 		e := fmt.Sprintf("[UpdateSchedule] Schedule name is required")
 		g.L.Warningln(e)
 		r.JSON(500, e)
 		return
 	}
+	fmt.Println(scd)
 	if s := Ss.GetScheduleById(int64(scd.Id)); s != nil {
 		s.Name, s.Desc, s.Cyc, s.StartMonth = scd.Name, scd.Desc, scd.Cyc, scd.StartMonth
 		s.StartSecond, s.ModifyTime, s.ModifyUserId = scd.StartSecond, time.Now(), scd.ModifyUserId
@@ -212,7 +213,7 @@ func DeleteJob(params martini.Params, r render.Render, Ss *schedule.ScheduleMana
 //持久化并添加至Schedule中。
 //成功返回添加好的Job信息
 //错误返回err信息
-func AddJob(r render.Render, Ss *schedule.ScheduleManager, job *schedule.Job) { // {{{
+func AddJob(r render.Render, Ss *schedule.ScheduleManager, job schedule.Job) { // {{{
 	if job.Name == "" {
 		e := fmt.Sprintf("[AddJob] Job name is required")
 		g.L.Warningln(e)
@@ -225,7 +226,7 @@ func AddJob(r render.Render, Ss *schedule.ScheduleManager, job *schedule.Job) { 
 		job.ModifyUserId = 1
 		job.CreateTime = NowTimePtr()
 		job.ModifyTime = NowTimePtr()
-		if err := s.AddJob(job); err != nil {
+		if err := s.AddJob(&job); err != nil {
 			e := fmt.Sprintf("[AddJob] add job error %s.", err.Error())
 			g.L.Warningln(e)
 			r.JSON(500, e)
@@ -244,7 +245,7 @@ func AddJob(r render.Render, Ss *schedule.ScheduleManager, job *schedule.Job) { 
 //updateJob获取客户端发送的Job信息，并调用Schedule的UpdateJob方法将其
 //持久化并更新至Schedule中。
 //成功返回更新后的Job信息
-func UpdateJob(r render.Render, Ss *schedule.ScheduleManager, job *schedule.Job) { // {{{
+func UpdateJob(r render.Render, Ss *schedule.ScheduleManager, job schedule.Job) { // {{{
 	if job.Name == "" {
 		e := fmt.Sprintf("[UpdateJob] Job name is required")
 		g.L.Warningln(e)
@@ -252,7 +253,7 @@ func UpdateJob(r render.Render, Ss *schedule.ScheduleManager, job *schedule.Job)
 		return
 	}
 	if s := Ss.GetScheduleById(int64(job.ScheduleId)); s != nil {
-		if err := s.UpdateJob(job); err != nil {
+		if err := s.UpdateJob(&job); err != nil {
 			e := fmt.Sprintf("[UpdateJob] update job error %s.", err.Error())
 			g.L.Warningln(e)
 			r.JSON(500, e)
@@ -273,7 +274,7 @@ func UpdateJob(r render.Render, Ss *schedule.ScheduleManager, job *schedule.Job)
 //成功后根据其中的JobId找到对应Job将其添加
 //成功返回添加好的Job信息
 //错误返回err信息
-func AddTask(params martini.Params, r render.Render, Ss *schedule.ScheduleManager, task *schedule.Task) { // {{{
+func AddTask(params martini.Params, r render.Render, Ss *schedule.ScheduleManager, task schedule.Task) { // {{{
 	sid, _ := params["sid"]
 	ssid, _ := strconv.Atoi(sid)
 
@@ -291,7 +292,7 @@ func AddTask(params martini.Params, r render.Render, Ss *schedule.ScheduleManage
 	task.ModifyTime = NowTimePtr()
 
 	if s := Ss.GetScheduleById(int64(ssid)); s != nil {
-		err := s.AddTask(task)
+		err := s.AddTask(&task)
 		if err != nil {
 			e := fmt.Sprintf("[AddTask] add task error %s.", err.Error())
 			g.L.Warningln(e)

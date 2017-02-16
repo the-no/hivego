@@ -33,7 +33,7 @@ type ExecSchedule struct { // {{{
 	state          int8                //状态 0.不满足条件未执行 1. 执行中 2. 暂停 3. 完成 4.意外中止
 	result         float32             //结果,调度中执行成功任务的百分比
 	execType       int8                //执行类型 1. 自动定时调度 2.手动人工调度 3.修复执行
-	execJob        *ExecJob            //作业执行信息
+	execJobs       []*ExecJob          //作业执行信息
 	execTasks      map[int64]*ExecTask //任务执行信息
 	execTaskChan   chan *ExecTask      //taskChan用来传递完成的任务。当一个作业完成后会将自己放入taskChan变量中
 	jobCnt         int                 //调度中作业数量
@@ -49,9 +49,10 @@ func (es *ExecSchedule) InitExecSchedule() (err error) { // {{{
 		return errors.New(fmt.Sprintf("\n[es.InitExecSchedule] Save Log Failed %s", err.Error()))
 	}
 
-	if es.schedule.Job != nil {
-		es.execJob = ExecJobWarper(es.batchId, es.schedule.Job)
-		err = es.execJob.InitExecJob(es)
+	//if es.schedule.Job != nil {
+	for _, j := range es.schedule.Jobs {
+		execJob := ExecJobWarper(es.batchId, j)
+		err = execJob.InitExecJob(es)
 		if err != nil {
 			return errors.New(fmt.Sprintf("\n[es.InitExecSchedule] %s", err.Error()))
 		}
@@ -217,18 +218,18 @@ func (es *ExecSchedule) Pause() { // {{{
 
 //作业执行信息结构
 type ExecJob struct { // {{{
-	batchJobId string              //作业批次ID，批次ID + 作业ID
-	batchId    string              //批次ID，规则scheduleId + 周期开始时间(不含周期内启动时间)
-	job        *Job                //作业
-	startTime  *time.Time          //开始时间
-	endTime    *time.Time          //结束时间
-	state      int8                //状态 0.不满足条件未执行 1. 执行中 2. 暂停 3. 完成 4.意外中止
-	result     float32             //结果执行成功任务的百分比
-	nextJob    *ExecJob            //下一个作业
-	execType   int8                //执行类型1. 自动定时调度 2.手动人工调度 3.修复执行
-	execTasks  map[int64]*ExecTask //任务执行信息
-	taskCnt    int                 //作业中任务数量
-	LogId      int                 //调度日志Id
+	batchJobId string     //作业批次ID，批次ID + 作业ID
+	batchId    string     //批次ID，规则scheduleId + 周期开始时间(不含周期内启动时间)
+	job        *Job       //作业
+	startTime  *time.Time //开始时间
+	endTime    *time.Time //结束时间
+	state      int8       //状态 0.不满足条件未执行 1. 执行中 2. 暂停 3. 完成 4.意外中止
+	result     float32    //结果执行成功任务的百分比
+	//nextJob    *ExecJob            //下一个作业
+	execType  int8                //执行类型1. 自动定时调度 2.手动人工调度 3.修复执行
+	execTasks map[int64]*ExecTask //任务执行信息
+	taskCnt   int                 //作业中任务数量
+	LogId     int                 //调度日志Id
 } // }}}
 
 //根据传入的batchId和Job参数来构建一个调度的执行结构，并返回。
@@ -239,7 +240,7 @@ func ExecJobWarper(batchId string, j *Job) *ExecJob { // {{{
 		job:        j,
 		state:      0,
 		result:     0,
-		execType:   1,
+		execType:   j.ExecType,
 		execTasks:  make(map[int64]*ExecTask, 0),
 	}
 } // }}}
@@ -265,10 +266,10 @@ func (ej *ExecJob) InitExecJob(es *ExecSchedule) (err error) { // {{{
 	ej.taskCnt = len(ej.execTasks)
 
 	//继续构建作业的下级作业
-	if ej.job.NextJob != nil {
+	/*	if ej.job.NextJob != nil {
 		ej.nextJob = ExecJobWarper(ej.batchId, ej.job.NextJob)
 		err = ej.nextJob.InitExecJob(es)
-	}
+	}*/
 	return err
 
 } // }}}
@@ -391,20 +392,20 @@ func (et *ExecTask) Run(taskChan chan *ExecTask) { // {{{
 
 	et.startTime = NowTimePtr()
 	et.state = 1
-	et.Log()
-	g.L.Infoln("task", et.task.Name,
-		"is start batchTaskId[", et.batchTaskId, "] cmd =",
-		et.task.Cmd, " arg=", et.task.Param)
-
 	//判断是否在执行周期内,若是则直接执行，否则跳过返回执行完成的状态，并继续下一步骤
 	if et.task.TaskCyc != "" && !et.isReady() {
 		et.state = 5
 		et.output = "task is ignored"
-		g.L.Infoln("task", et.task.Name, "is ignore batchTaskId[", et.batchTaskId, "]")
-		et.Log()
+		//g.L.Infoln("task", et.task.Name, "is ignore batchTaskId[", et.batchTaskId, "]")
+		//et.Log()
 		taskChan <- et
 		return
 	}
+
+	et.Log()
+	g.L.Infoln("task", et.task.Name,
+		"is start batchTaskId[", et.batchTaskId, "] cmd =",
+		et.task.Cmd, " arg=", et.task.Param)
 
 	//执行任务
 	task := et.task
@@ -439,7 +440,7 @@ func (et *ExecTask) Run(taskChan chan *ExecTask) { // {{{
 func (et *ExecTask) isReady() (b bool) { // {{{
 	td := TruncDate(et.task.TaskCyc, time.Now().Local()).Add(et.task.StartSecond)
 	sd := TruncDate(et.task.ScheduleCyc, time.Now().Local())
-
+	fmt.Println(et, td, sd, td == sd)
 	if TruncDate(et.task.ScheduleCyc, td) == sd {
 		b = true
 	}

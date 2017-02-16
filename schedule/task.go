@@ -14,6 +14,9 @@ type Task struct { // {{{
 	TaskType     int64             // 任务类型
 	ScheduleCyc  string            //调度周期
 	TaskCyc      string            //调度周期
+	ExecType     int8              //`json:"-"`
+	Disabled     int8              //`json:"-"`
+	Priority     int16             //`json:"-"`
 	StartSecond  time.Duration     //周期内启动时间
 	Cmd          string            // 任务执行的命令或脚本、函数名等。
 	Desc         string            //任务说明

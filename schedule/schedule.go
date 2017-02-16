@@ -173,26 +173,26 @@ func (sl *ScheduleManager) DeleteSchedule(id int64) error { // {{{
 
 //调度信息结构
 type Schedule struct { // {{{
-	Id           int64           //调度ID
-	Name         string          //调度名称
-	Count        int8            //调度次数
-	Cyc          string          //调度周期
-	StartSecond  []time.Duration //启动时间
-	StartMonth   []int           //启动月份
-	NextStart    time.Time       //下次启动时间
-	TimeOut      int64           //最大执行时间
-	JobId        int64           //作业ID
-	Job          *Job            //作业
-	Jobs         []*Job          //作业列表
-	Tasks        []*Task         `json:"-"` //任务列表
-	isRefresh    chan bool       `json:"-"` //是否刷新标志
-	Desc         string          //调度说明
-	JobCnt       int             //调度中作业数量
-	TaskCnt      int             //调度中任务数量
-	CreateUserId int64           //创建人
-	CreateTime   time.Time       //创人
-	ModifyUserId int64           //修改人
-	ModifyTime   time.Time       //修改时间
+	Id          int64           //调度ID
+	Name        string          //调度名称
+	Count       int8            //调度次数
+	Cyc         string          //调度周期
+	StartSecond []time.Duration //启动时间
+	StartMonth  []int           //启动月份
+	NextStart   time.Time       //下次启动时间
+	TimeOut     int64           //最大执行时间
+	//JobId        int64           //作业ID
+	//Job          *Job            //作业
+	Jobs         []*Job    //作业列表
+	Tasks        []*Task   `json:"-"` //任务列表
+	isRefresh    chan bool `json:"-"` //是否刷新标志
+	Desc         string    //调度说明
+	JobCnt       int       //调度中作业数量
+	TaskCnt      int       //调度中任务数量
+	CreateUserId int64     //创建人
+	CreateTime   time.Time //创人
+	ModifyUserId int64     //修改人
+	ModifyTime   time.Time //修改时间
 } // }}}
 
 //按时启动Schedule，Timer中会根据Schedule的周期以及启动时间计算下次
@@ -262,24 +262,32 @@ func (s *Schedule) InitSchedule() error { // {{{
 			return nil
 		}*/
 
-	tj := &Job{Id: s.JobId}
+	/*tj := &Job{Id: s.JobId}
 	err = tj.getJob()
 	if err != nil {
 		e := fmt.Sprintf("\n[s.InitSchedule] get job [%d] error %s.", s.JobId, err.Error())
 		return errors.New(e)
-	}
+	}*/
+	s.getJobs()
 
-	tj.ScheduleId, tj.ScheduleCyc = s.Id, s.Cyc
-	if err = tj.InitJob(s); err != nil {
-		e := fmt.Sprintf("\n[s.InitSchedule] init job [%d] error %s.", s.JobId, err.Error())
-		return errors.New(e)
+	for _, tj := range s.Jobs {
+		tj.ScheduleId, tj.ScheduleCyc = s.Id, s.Cyc
+		if err = tj.InitJob(s); err != nil {
+			e := fmt.Sprintf("\n[s.InitSchedule] init job [%d] error %s.", tj.Id, err.Error())
+			return errors.New(e)
+		}
 	}
-	s.Job = tj
-	for j := s.Job; j != nil; {
-		s.Jobs = append(s.Jobs, j)
-		s.JobCnt++
-		j = j.NextJob
-	}
+	/*	tj.ScheduleId, tj.ScheduleCyc = s.Id, s.Cyc
+		if err = tj.InitJob(s); err != nil {
+			e := fmt.Sprintf("\n[s.InitSchedule] init job [%d] error %s.", s.JobId, err.Error())
+			return errors.New(e)
+		}*/
+	/*	s.Job = tj
+		for j := s.Job; j != nil; {
+			s.Jobs = append(s.Jobs, j)
+			s.JobCnt++
+			j = j.NextJob
+		}*/
 	return nil
 } // }}}
 
@@ -395,13 +403,14 @@ func (s *Schedule) AddJob(job *Job) error { // {{{
 		return errors.New(e)
 	}
 
-	if len(s.Jobs) == 0 {
+	/*if len(s.Jobs) == 0 {
 		s.JobId, s.Job = job.Id, job
 		if err = s.update(); err != nil {
 			e := fmt.Sprintf("\n[s.AddJob] update schedule [%d] error %s.", s.Id, err.Error())
 			return errors.New(e)
 		}
-	} else {
+	} else*/
+	if len(s.Jobs) > 0 {
 		j := s.Jobs[len(s.Jobs)-1]
 		j.NextJob, j.NextJobId, job.PreJob = job, job.Id, j
 		if err = j.update(); err != nil {
@@ -461,11 +470,11 @@ func (s *Schedule) DeleteJob(id int64) error { // {{{
 		}
 
 		if len(s.Jobs) == 1 {
-			s.Jobs, s.Job, s.JobId = make([]*Job, 0), nil, 0
-			if err = s.update(); err != nil {
+			s.Jobs = s.Jobs[:0]
+			/*if err = s.update(); err != nil {
 				e := fmt.Sprintf("\n[s.DeleteJob] update schedule [%d] error %s.", s.Id, err.Error())
 				return errors.New(e)
-			}
+			}*/
 		} else {
 			s.Jobs = s.Jobs[0 : len(s.Jobs)-1]
 		}
