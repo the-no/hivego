@@ -173,7 +173,7 @@ func (s *Schedule) setStart() error { // {{{
 func (s *Schedule) getSchedule() error { // {{{
 	if s.Id == 0 {
 		s.Name = "DefaultScd"
-		s.Cyc = "ss"
+		s.Cyc = "mi"
 		s.Jobs = make([]*Job, 0)
 		s.Tasks = make([]*Task, 0)
 		s.StartSecond = append(s.StartSecond, time.Duration(0))
@@ -267,7 +267,7 @@ func (s *Schedule) getJobs() error {
 	}
 
 	if s.Id == 0 {
-		j := &Job{ScheduleCyc: "ss", Name: "DefaultJob"}
+		j := &Job{ScheduleCyc: "mi", Name: "DefaultJob"}
 		s.Jobs = append(s.Jobs, j)
 		return nil
 	}
@@ -277,7 +277,7 @@ func (s *Schedule) getJobs() error {
 //从元数据库获取Job信息。
 func (j *Job) getJob() error { // {{{
 	if j.Id == 0 {
-		j.ScheduleCyc = "ss"
+		j.ScheduleCyc = "mi"
 		j.Name = "DefaultJob"
 		return nil
 	}
@@ -407,6 +407,7 @@ func (t *Task) getTask() error { // {{{
 			   task.task_time_out,
 			   task.task_type_id,
 			   task.task_cyc,
+			   task.task_start,
 			   task.exec_type,
 			   task.disabled,
 			   task.priority,
@@ -427,7 +428,7 @@ func (t *Task) getTask() error { // {{{
 
 	//循环读取记录，格式化后存入变量ｂ
 	for rows.Next() {
-		err = rows.Scan(&id, &t.Address, &t.Name, &t.TimeOut, &t.TaskType, &t.TaskCyc, &t.ExecType, &t.Disabled, &t.Priority, &t.Desc, &td, &t.Cmd, &t.CreateUserId, &t.CreateTime, &t.ModifyUserId, &t.ModifyTime)
+		err = rows.Scan(&id, &t.Address, &t.Name, &t.TimeOut, &t.TaskType, &t.TaskCyc, &t.StartSecond, &t.ExecType, &t.Disabled, &t.Priority, &t.Desc, &td, &t.Cmd, &t.CreateUserId, &t.CreateTime, &t.ModifyUserId, &t.ModifyTime)
 		if err != nil {
 			e := fmt.Sprintf("\n[t.getTask] %s.", err.Error())
 			return errors.New(e)
@@ -649,10 +650,6 @@ func (t *Task) add() (err error) { // {{{
 
 	id, _ := result.LastInsertId()
 	t.Id = id
-	//t.RelTasksId = make([]int64, 0)
-	//t.RelTasks = make(map[string]*Task)
-	//	t.Attr = make(map[string]string)
-	//t.Param = make([]string, 0)
 	return err
 } // }}}
 

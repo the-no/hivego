@@ -8,6 +8,14 @@ import (
 
 //获取距启动的时间（秒）
 func getCountDown(cyc string, sm []int, ss []time.Duration) (countDown time.Duration, err error) { // {{{
+
+	startTime, _ := getCountDownTime(cyc, sm, ss)
+	countDown = startTime.Sub(time.Now())
+	return countDown, nil
+
+} // }}}
+
+func getCountDownTime(cyc string, sm []int, ss []time.Duration) (starttime time.Time, err error) { // {{{
 	now := GetNow()
 	var startTime time.Time
 	var b bool //执行时间是否在当前时间之后的标志
@@ -51,11 +59,11 @@ func getCountDown(cyc string, sm []int, ss []time.Duration) (countDown time.Dura
 		}
 
 	}
-	countDown = startTime.Sub(time.Now())
+	//countDown = startTime.Sub(time.Now())
 
-	return countDown, nil
+	return startTime, nil
 
-} // }}}
+}
 
 //时间取整
 func TruncDate(cyc string, now time.Time) time.Time { // {{{
@@ -231,4 +239,19 @@ func printSchedule(scds map[int64]*Schedule) { // {{{
 func NowTimePtr() *time.Time {
 	t := time.Now()
 	return &t
+}
+
+type byTime []*Task
+
+func (s byTime) Len() int      { return len(s) }
+func (s byTime) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
+func (s byTime) Less(i, j int) bool {
+
+	if s[i].NextRunTime.IsZero() {
+		return false
+	}
+	if s[j].NextRunTime.IsZero() {
+		return true
+	}
+	return s[i].NextRunTime.Before(s[j].NextRunTime)
 }

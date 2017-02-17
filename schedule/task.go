@@ -31,6 +31,8 @@ type Task struct { // {{{
 	CreateTime   *time.Time        //创人
 	ModifyUserId int64             //修改人
 	ModifyTime   *time.Time        //修改时间
+	NextRunTime  time.Time
+	PreRunTime   time.Time
 } // }}}
 
 //根据Task.Id从元数据库获取信息初始化Task结构，包含以下动作
@@ -76,8 +78,14 @@ func (t *Task) InitTask(s *Schedule) error { // {{{
 	}
 
 	s.addTaskList(t)
+	t.NextTime()
 	return nil
 } // }}}
+
+func (t *Task) NextTime() error {
+	t.NextRunTime, _ = getCountDownTime(t.TaskCyc, []int{0}, []time.Duration{t.StartSecond})
+	return nil
+}
 
 //更新Task信息到元数据库。
 //更新基本信息后，更新参数信息

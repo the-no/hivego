@@ -34,45 +34,11 @@ type Job struct { // {{{
 //失败返回error信息。
 func (j *Job) InitJob(s *Schedule) error { // {{{
 
-	/*	err := j.getJob()
-		if err != nil {
-			e := fmt.Sprintf("\n[j.InitJob] init job [%d] error %s.", j.Id, err.Error())
-			return errors.New(e)
-		}*/
-	/*
-		if j.PreJobId != 0 {
-			j.PreJob = &Job{Id: j.PreJobId}
-			err = j.PreJob.getJob()
-			if err != nil {
-				e := fmt.Sprintf("\n[j.InitJob] get pre job [%d] error %s.", j.PreJobId, err.Error())
-				return errors.New(e)
-			}
-		}*/
-
 	err := j.InitTasksForJob(s)
 	if err != nil {
 		e := fmt.Sprintf("\n[j.InitJob] init task for job [%d] error %s.", j.Id, err.Error())
 		return errors.New(e)
 	}
-
-	/*//获取下级作业
-	if j.NextJobId == 0 {
-		return nil
-	}
-
-	nj := &Job{Id: j.NextJobId}
-	err = nj.getJob()
-	if err != nil {
-		e := fmt.Sprintf("\n[j.InitJob] init job [%d] error %s.", j.NextJobId, err.Error())
-		return errors.New(e)
-	}
-
-	nj.ScheduleId, nj.ScheduleCyc = j.ScheduleId, j.ScheduleCyc
-	if err := nj.InitJob(s); err != nil {
-		e := fmt.Sprintf("\n[j.InitJob] init job [%d] error %s.", nj.Id, err.Error())
-		return errors.New(e)
-	}
-	j.NextJob = nj*/
 
 	return nil
 } // }}}

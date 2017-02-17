@@ -13,11 +13,11 @@ import (
 //根据传入的Schedule参数来构建一个调度的执行结构，并返回。
 func ExecScheduleWarper(s *Schedule) *ExecSchedule { // {{{
 	return &ExecSchedule{
-		batchId:      fmt.Sprintf("%s %d", time.Now().Local().Format("2006-01-02 15:04:05.000000"), s.Id), //批次ID
-		schedule:     s,
-		execType:     1,
-		jobCnt:       s.JobCnt,
-		taskCnt:      s.TaskCnt,
+		batchId:  fmt.Sprintf("%s %d", time.Now().Local().Format("2006-01-02 15:04:05.000000"), s.Id), //批次ID
+		schedule: s,
+		execType: 1,
+		jobCnt:   s.JobCnt,
+		//taskCnt:      s.TaskCnt,
 		execTasks:    make(map[int64]*ExecTask), //设置任务列表
 		execTaskChan: make(chan *ExecTask),
 	}
@@ -56,8 +56,8 @@ func (es *ExecSchedule) InitExecSchedule() (err error) { // {{{
 		if err != nil {
 			return errors.New(fmt.Sprintf("\n[es.InitExecSchedule] %s", err.Error()))
 		}
+		es.taskCnt = es.taskCnt + execJob.taskCnt
 	}
-
 	return err
 } // }}}
 
@@ -81,7 +81,6 @@ func (es *ExecSchedule) TaskDone(et *ExecTask) (finish bool, err error) { // {{{
 	//计算任务完成百分比
 	s := es.schedule
 	es.result = float32(s.TaskCnt-es.taskCnt) / float32(s.TaskCnt)
-
 	if es.taskCnt == 0 { //调度结束
 		g.Schedules.RemoveExecSchedule(es.batchId)
 
@@ -96,11 +95,6 @@ func (es *ExecSchedule) TaskDone(et *ExecTask) (finish bool, err error) { // {{{
 		g.L.Infoln("schedule ", s.Name, " is end ", " batchId=", es.batchId,
 			" success=", es.successTaskCnt, " fail=", es.failTaskCnt, " result=", es.result)
 
-		//自动调度执行，完成后设置下次执行时间
-		if es.execType == 1 {
-			//设置下次执行时间
-			go s.Timer()
-		}
 		return true, nil
 	}
 
@@ -185,7 +179,7 @@ func (es *ExecSchedule) Run() { // {{{
 func (es *ExecSchedule) RunTasks() (err error) { // {{{
 	//启动独立的任务
 	for _, et := range es.execTasks {
-
+		fmt.Println(et.task.Name, len(et.relExecTasks), et.state)
 		//依赖任务列表为空，任务可以执行
 		if len(et.relExecTasks) == 0 && (et.state == 0 || et.state == 2) {
 
@@ -255,6 +249,9 @@ func (ej *ExecJob) InitExecJob(es *ExecSchedule) (err error) { // {{{
 	//构建当前作业中的任务执行结构
 	for _, t := range ej.job.Tasks { // {{{
 		et := ExecTaskWarper(ej, t)
+		if es.schedule.NextStart != t.NextRunTime {
+			continue
+		}
 		if err = et.InitExecTask(es); err != nil {
 			e := fmt.Sprintf("\n[ej.InitExecJob] %s %s", ej.job.Name, err.Error())
 			return errors.New(e)
@@ -265,11 +262,6 @@ func (ej *ExecJob) InitExecJob(es *ExecSchedule) (err error) { // {{{
 
 	ej.taskCnt = len(ej.execTasks)
 
-	//继续构建作业的下级作业
-	/*	if ej.job.NextJob != nil {
-		ej.nextJob = ExecJobWarper(ej.batchId, ej.job.NextJob)
-		err = ej.nextJob.InitExecJob(es)
-	}*/
 	return err
 
 } // }}}
@@ -290,6 +282,7 @@ func (ej *ExecJob) Start() (err error) { // {{{
 } // }}}
 
 func (ej *ExecJob) TaskDone(et *ExecTask) (err error) { // {{{
+	et.task.NextTime()
 	delete(ej.execTasks, et.task.Id)
 	ej.taskCnt--
 	//计算任务完成百分比
@@ -332,7 +325,7 @@ func ExecTaskWarper(ej *ExecJob, t *Task) *ExecTask { // {{{
 		batchId:       ej.batchId,
 		task:          t,
 		state:         0,
-		execType:      1,
+		execType:      t.ExecType,
 		execJob:       ej,
 		relExecTasks:  make(map[int64]*ExecTask),
 		nextExecTasks: make(map[int64]*ExecTask),
@@ -341,6 +334,7 @@ func ExecTaskWarper(ej *ExecJob, t *Task) *ExecTask { // {{{
 
 //初始化Task执行结构
 func (et *ExecTask) InitExecTask(es *ExecSchedule) error { // {{{
+
 	if err := et.Log(); err != nil {
 		e := fmt.Sprintf("\n[et.InitExecTask] %s %s", et.task.Name, err.Error())
 		return errors.New(e)
@@ -393,15 +387,15 @@ func (et *ExecTask) Run(taskChan chan *ExecTask) { // {{{
 	et.startTime = NowTimePtr()
 	et.state = 1
 	//判断是否在执行周期内,若是则直接执行，否则跳过返回执行完成的状态，并继续下一步骤
-	if et.task.TaskCyc != "" && !et.isReady() {
+	//if et.task.TaskCyc != "" && !et.isReady() {
+	/*	if et.task.TaskCyc != "" && !et.isReady() {
 		et.state = 5
 		et.output = "task is ignored"
 		//g.L.Infoln("task", et.task.Name, "is ignore batchTaskId[", et.batchTaskId, "]")
 		//et.Log()
 		taskChan <- et
 		return
-	}
-
+	}*/
 	et.Log()
 	g.L.Infoln("task", et.task.Name,
 		"is start batchTaskId[", et.batchTaskId, "] cmd =",
@@ -437,15 +431,20 @@ func (et *ExecTask) Run(taskChan chan *ExecTask) { // {{{
 
 //isReady方法会根据Task的调度周期与启动时间判断是否符合执行条件
 //符合返回true，反之false
-func (et *ExecTask) isReady() (b bool) { // {{{
-	td := TruncDate(et.task.TaskCyc, time.Now().Local()).Add(et.task.StartSecond)
-	sd := TruncDate(et.task.ScheduleCyc, time.Now().Local())
-	fmt.Println(et, td, sd, td == sd)
-	if TruncDate(et.task.ScheduleCyc, td) == sd {
+/*func (et *ExecTask) isReady() (b bool) { // {{{
+	//td := TruncDate(et.task.TaskCyc, time.Now().Local()).Add(et.task.StartSecond)
+	now := time.Now().Local()
+	sd := TruncDate(et.task.TaskCyc, now)
+	fmt.Println(et.task.Name, et.task.NextRunTime, sd, TruncDate(et.task.TaskCyc, et.task.NextRunTime), sd == et.task.NextRunTime)
+	if TruncDate(et.task.TaskCyc, et.task.NextRunTime) == sd {
 		b = true
+		et.task.NextTime()
+	} else if now.After(et.task.NextRunTime) {
+		fmt.Println("after -----------------")
+		et.task.NextTime()
 	}
 	return b
-} // }}}
+}*/ // }}}
 
 //ExecSchedule.Restore(batchId string)方法修复执行指定的调度。
 //根据传入的batchId，构建调度执行结构，并调用Run方法执行其中的任务

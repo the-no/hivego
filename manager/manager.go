@@ -50,7 +50,7 @@ func controller(m *martini.ClassicMartini) { // {{{
 		r.HTML(200, "index", nil)
 	})
 
-	m.Group("/schedules", func(r martini.Router) {
+	/*	m.Group("/schedules", func(r martini.Router) {
 		//Schedule部分
 		r.Get("", GetSchedules)
 		r.Post("", binding.Bind(schedule.Schedule{}), AddSchedule)
@@ -72,9 +72,9 @@ func controller(m *martini.ClassicMartini) { // {{{
 		//TaskRelation部分
 		r.Post("/:sid/jobs/:jid/tasks/:id/reltask/:relid", AddRelTask)
 		r.Delete("/:sid/jobs/:jid/tasks/:id/reltask/:relid", DeleteRelTask)
-	})
+	})*/
 
-	m.Group("/jobs", func(r martini.Router) {
+	/*m.Group("/jobs", func(r martini.Router) {
 		//Job部分
 		r.Get("/:id", GetJobsForSchedule)
 		r.Post("", binding.Bind(schedule.Job{}), AddJob)
@@ -89,7 +89,7 @@ func controller(m *martini.ClassicMartini) { // {{{
 		//TaskRelation部分
 		r.Post("/jid/tasks/:id/reltask/:relid", AddRelTask)
 		r.Delete("/:jid/tasks/:id/reltask/:relid", DeleteRelTask)
-	})
+	})*/
 
 	m.Group("/tasks", func(r martini.Router) {
 		//Task部分

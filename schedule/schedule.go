@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/Sirupsen/logrus"
+	"sort"
 	"sync"
 	"time"
 )
@@ -57,7 +58,7 @@ func (sl *ScheduleManager) InitScheduleList() { // {{{
 	}
 	def_scd := &Schedule{
 		Name:        "DefaultScd",
-		Cyc:         "ss",
+		Cyc:         "mi",
 		StartSecond: []time.Duration{time.Duration(0)},
 		StartMonth:  []int{0},
 	}
@@ -81,16 +82,14 @@ func (sl *ScheduleManager) RemoveExecSchedule(batchId string) { // {{{
 
 //开始监听Schedule，遍历列表中的Schedule并启动它的Timer方法。
 func (sl *ScheduleManager) StartListener() { // {{{
-	//	sl.StartDefaultListener()
 	for _, scd := range sl.ScheduleList {
 		//从元数据库初始化调度链信息
-		/*	err := scd.InitSchedule()
-			if err != nil {
-				e := fmt.Sprintf("[sl.StartListener] init schedule [%d] error %s.\n", scd.Id, err.Error())
-				g.L.Warningln(e)
-				return
-			}
-			fmt.Println("Start Timer", scd.Name)*/
+		err := scd.InitSchedule()
+		if err != nil {
+			e := fmt.Sprintf("[sl.StartListener] init schedule [%d] error %s.\n", scd.Id, err.Error())
+			g.L.Warningln(e)
+			return
+		}
 		//启动监听，按时启动Schedule
 		go scd.Timer()
 	}
@@ -173,26 +172,24 @@ func (sl *ScheduleManager) DeleteSchedule(id int64) error { // {{{
 
 //调度信息结构
 type Schedule struct { // {{{
-	Id          int64           //调度ID
-	Name        string          //调度名称
-	Count       int8            //调度次数
-	Cyc         string          //调度周期
-	StartSecond []time.Duration //启动时间
-	StartMonth  []int           //启动月份
-	NextStart   time.Time       //下次启动时间
-	TimeOut     int64           //最大执行时间
-	//JobId        int64           //作业ID
-	//Job          *Job            //作业
-	Jobs         []*Job    //作业列表
-	Tasks        []*Task   `json:"-"` //任务列表
-	isRefresh    chan bool `json:"-"` //是否刷新标志
-	Desc         string    //调度说明
-	JobCnt       int       //调度中作业数量
-	TaskCnt      int       //调度中任务数量
-	CreateUserId int64     //创建人
-	CreateTime   time.Time //创人
-	ModifyUserId int64     //修改人
-	ModifyTime   time.Time //修改时间
+	Id           int64           //调度ID
+	Name         string          //调度名称
+	Count        int8            //调度次数
+	Cyc          string          //调度周期
+	StartSecond  []time.Duration //启动时间
+	StartMonth   []int           //启动月份
+	NextStart    time.Time       //下次启动时间
+	TimeOut      int64           //最大执行时间
+	Jobs         []*Job          //作业列表
+	Tasks        []*Task         `json:"-"` //任务列表
+	isRefresh    chan bool       `json:"-"` //是否刷新标志
+	Desc         string          //调度说明
+	JobCnt       int             //调度中作业数量
+	TaskCnt      int             //调度中任务数量
+	CreateUserId int64           //创建人
+	CreateTime   time.Time       //创人
+	ModifyUserId int64           //修改人
+	ModifyTime   time.Time       //修改时间
 } // }}}
 
 //按时启动Schedule，Timer中会根据Schedule的周期以及启动时间计算下次
@@ -204,47 +201,48 @@ func (s *Schedule) Timer() { // {{{
 		g.L.Warningln(e)
 		return
 	}
+	var countDown time.Duration
+	for {
 
-	//获取距启动的时间（秒）
-	countDown, err := getCountDown(s.Cyc, s.StartMonth, s.StartSecond)
-	if err != nil {
-		e := fmt.Sprintf("[s.Timer] get schedule [%d %s] start time error %s.\n", s.Id, s.Name, err.Error())
-		g.L.Warningln(e)
-		return
-	}
+		sort.Sort(byTime(s.Tasks))
+		countDown = time.Duration(0)
+		if len(s.Tasks) == 0 || s.Tasks[0].NextRunTime.IsZero() {
+			//获取距启动的时间（秒）
+			countDown, _ = getCountDown(s.Cyc, s.StartMonth, s.StartSecond)
+			s.NextStart = time.Now().Add(countDown)
+		} else {
+			s.NextStart = s.Tasks[0].NextRunTime
+			countDown = s.NextStart.Sub(time.Now())
+			if countDown < time.Duration(0) {
 
-	s.NextStart = time.Now().Add(countDown)
-	select {
-	case <-time.After(countDown):
-		//从元数据库初始化调度链信息
-		err := s.InitSchedule()
-		if err != nil {
-			e := fmt.Sprintf("[s.Timer] init schedule [%d] error %s.\n", s.Id, err.Error())
-			g.L.Warningln(e)
-			return
+			}
+			fmt.Println(s.Cyc, s.NextStart, countDown)
 		}
 
-		l := fmt.Sprintf("[s.Timer] schedule [%d %s] is start.\n", s.Id, s.Name)
-		g.L.Print(l)
+		select {
+		case <-time.After(countDown):
+			//从元数据库初始化调度链信息
+			l := fmt.Sprintf("[s.Timer] schedule [%d %s] is start.\n", s.Id, s.Name)
+			g.L.Print(l)
 
-		//构建执行结构链
-		es := ExecScheduleWarper(s)
-		g.Schedules.AddExecSchedule(es)
-		err = es.InitExecSchedule()
+			//构建执行结构链
+			es := ExecScheduleWarper(s)
+			g.Schedules.AddExecSchedule(es)
+			err := es.InitExecSchedule()
 
-		if err != nil {
-			e := fmt.Sprintf("[s.Timer] Init Execschedule [%d %s] error %s.\n", s.Id, s.Name, err.Error())
-			g.L.Warningln(e)
+			if err != nil {
+				e := fmt.Sprintf("[s.Timer] Init Execschedule [%d %s] error %s.\n", s.Id, s.Name, err.Error())
+				g.L.Warningln(e)
+				return
+			}
+			//启动线程执行调度任务
+			es.Run()
+		case <-s.isRefresh:
+			l := fmt.Sprintf("[s.Timer] schedule [%d %s] is refresh.\n", s.Id, s.Name)
+			g.L.Println(l)
 			return
 		}
-		//启动线程执行调度任务
-		go es.Run()
-	case <-s.isRefresh:
-		l := fmt.Sprintf("[s.Timer] schedule [%d %s] is refresh.\n", s.Id, s.Name)
-		g.L.Println(l)
-		return
 	}
-
 	return
 } // }}}
 
@@ -257,19 +255,7 @@ func (s *Schedule) InitSchedule() error { // {{{
 		e := fmt.Sprintf("\n[s.InitSchedule] get schedule [%d] error %s.", s.Id, err.Error())
 		return errors.New(e)
 	}
-	/*
-		if s.JobId == 0 {
-			return nil
-		}*/
-
-	/*tj := &Job{Id: s.JobId}
-	err = tj.getJob()
-	if err != nil {
-		e := fmt.Sprintf("\n[s.InitSchedule] get job [%d] error %s.", s.JobId, err.Error())
-		return errors.New(e)
-	}*/
 	s.getJobs()
-
 	for _, tj := range s.Jobs {
 		tj.ScheduleId, tj.ScheduleCyc = s.Id, s.Cyc
 		if err = tj.InitJob(s); err != nil {
@@ -277,17 +263,6 @@ func (s *Schedule) InitSchedule() error { // {{{
 			return errors.New(e)
 		}
 	}
-	/*	tj.ScheduleId, tj.ScheduleCyc = s.Id, s.Cyc
-		if err = tj.InitJob(s); err != nil {
-			e := fmt.Sprintf("\n[s.InitSchedule] init job [%d] error %s.", s.JobId, err.Error())
-			return errors.New(e)
-		}*/
-	/*	s.Job = tj
-		for j := s.Job; j != nil; {
-			s.Jobs = append(s.Jobs, j)
-			s.JobCnt++
-			j = j.NextJob
-		}*/
 	return nil
 } // }}}
 
@@ -402,14 +377,6 @@ func (s *Schedule) AddJob(job *Job) error { // {{{
 		e := fmt.Sprintf("\n[s.AddJob] %s.", err.Error())
 		return errors.New(e)
 	}
-
-	/*if len(s.Jobs) == 0 {
-		s.JobId, s.Job = job.Id, job
-		if err = s.update(); err != nil {
-			e := fmt.Sprintf("\n[s.AddJob] update schedule [%d] error %s.", s.Id, err.Error())
-			return errors.New(e)
-		}
-	} else*/
 	if len(s.Jobs) > 0 {
 		j := s.Jobs[len(s.Jobs)-1]
 		j.NextJob, j.NextJobId, job.PreJob = job, job.Id, j
@@ -471,10 +438,6 @@ func (s *Schedule) DeleteJob(id int64) error { // {{{
 
 		if len(s.Jobs) == 1 {
 			s.Jobs = s.Jobs[:0]
-			/*if err = s.update(); err != nil {
-				e := fmt.Sprintf("\n[s.DeleteJob] update schedule [%d] error %s.", s.Id, err.Error())
-				return errors.New(e)
-			}*/
 		} else {
 			s.Jobs = s.Jobs[0 : len(s.Jobs)-1]
 		}
