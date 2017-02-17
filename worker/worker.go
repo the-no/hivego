@@ -41,7 +41,7 @@ type Task struct {
 	Param       []string          // 任务的参数信息
 	Attr        map[string]string // 任务的属性信息
 	JobId       int64             //所属作业ID
-	RelTasks    map[string]*Task  //依赖的任务
+	RelTasks    map[int64]*Task   //依赖的任务
 	RelTaskCnt  int64             //依赖的任务数量
 }
 
@@ -59,7 +59,6 @@ type CmdExecuter struct{}
 //参数task，需要执行的任务信息。
 //参数reply，任务执行输出的信息。
 func (this *CmdExecuter) Run(task *Task, reply *Reply) error { // {{{
-
 	//执行task任务
 	runCmd(task, reply)
 

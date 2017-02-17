@@ -213,30 +213,25 @@ func (s *Schedule) Timer() { // {{{
 		} else {
 			s.NextStart = s.Tasks[0].NextRunTime
 			countDown = s.NextStart.Sub(time.Now())
-			if countDown < time.Duration(0) {
-
-			}
-			fmt.Println(s.Cyc, s.NextStart, countDown)
 		}
+		g.L.Debugln(s.Name, s.Tasks[0].Name, s.NextStart, countDown)
 
 		select {
 		case <-time.After(countDown):
-			//从元数据库初始化调度链信息
-			l := fmt.Sprintf("[s.Timer] schedule [%d %s] is start.\n", s.Id, s.Name)
-			g.L.Print(l)
-
 			//构建执行结构链
 			es := ExecScheduleWarper(s)
 			g.Schedules.AddExecSchedule(es)
 			err := es.InitExecSchedule()
-
 			if err != nil {
 				e := fmt.Sprintf("[s.Timer] Init Execschedule [%d %s] error %s.\n", s.Id, s.Name, err.Error())
 				g.L.Warningln(e)
 				return
 			}
+			//从元数据库初始化调度链信息
+			l := fmt.Sprintf("[s.Timer] schedule [%d %s] is start.\n", s.Id, s.Name)
+			g.L.Print(l)
 			//启动线程执行调度任务
-			es.Run()
+			go es.Run()
 		case <-s.isRefresh:
 			l := fmt.Sprintf("[s.Timer] schedule [%d %s] is refresh.\n", s.Id, s.Name)
 			g.L.Println(l)
@@ -250,6 +245,7 @@ func (s *Schedule) Timer() { // {{{
 //根据其中的Jobid继续从元数据库读取job信息，并初始化。完成后继续初始化下级Job，
 //同时将初始化完成的Job和Task添加到Schedule的Jobs、Tasks成员中。
 func (s *Schedule) InitSchedule() error { // {{{
+	g.L.Infof("Init Schedule[%s] Start ...\n", s.Name)
 	err := s.getSchedule()
 	if err != nil {
 		e := fmt.Sprintf("\n[s.InitSchedule] get schedule [%d] error %s.", s.Id, err.Error())
@@ -263,6 +259,7 @@ func (s *Schedule) InitSchedule() error { // {{{
 			return errors.New(e)
 		}
 	}
+	g.L.Infof("Init Schedule[%s] End ...\n", s.Name)
 	return nil
 } // }}}
 

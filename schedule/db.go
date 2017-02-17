@@ -437,7 +437,7 @@ func (t *Task) getTask() error { // {{{
 		t.StartSecond = time.Duration(td) * time.Second
 		//初始化relTask、param的内存
 		t.RelTasksId = make([]int64, 0)
-		t.RelTasks = make(map[string]*Task)
+		t.RelTasks = make(map[int64]*Task)
 		t.Param = make([]string, 0)
 		t.Attr = make(map[string]string)
 	}

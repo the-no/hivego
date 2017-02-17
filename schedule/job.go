@@ -33,13 +33,13 @@ type Job struct { // {{{
 //继续初始化Job所属的Task列表，同时递归调用自身，初始化下级Job结构
 //失败返回error信息。
 func (j *Job) InitJob(s *Schedule) error { // {{{
-
+	g.L.Debugf("Init Job[%s] Start ...\n", j.Name)
 	err := j.InitTasksForJob(s)
 	if err != nil {
 		e := fmt.Sprintf("\n[j.InitJob] init task for job [%d] error %s.", j.Id, err.Error())
 		return errors.New(e)
 	}
-
+	g.L.Debugf("Init Job[%s] End ...\n", j.Name)
 	return nil
 } // }}}
 
@@ -47,6 +47,7 @@ func (j *Job) InitJob(s *Schedule) error { // {{{
 //调用方法初始化Task并加至Job的Tasks成员中，同时也添加到全局Tasks列表
 //出错返回错误信息
 func (j *Job) InitTasksForJob(s *Schedule) error { // {{{
+	g.L.Debugf("InitTasksForJob[%s] Start ...\n", j.Name)
 	j.Tasks = make(map[string]*Task)
 
 	tasksId, err := j.getTasksId()
@@ -68,6 +69,7 @@ func (j *Job) InitTasksForJob(s *Schedule) error { // {{{
 		j.TaskCnt++
 		task.JobId = j.Id
 	}
+	g.L.Debugf("InitTasksForJob[%s] End ...\n", j.Name)
 	return nil
 } // }}}
 

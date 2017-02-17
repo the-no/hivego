@@ -115,12 +115,10 @@ func (es *ExecSchedule) Run() { // {{{
 		g.L.Warningln(fmt.Sprintf("\n[es.Run] %s", err.Error()))
 		return
 	}
-
 	if err = es.RunTasks(); err != nil {
 		g.L.Warningln(fmt.Sprintf("\n[es.Run] %s", err.Error()))
 		return
 	}
-
 	//不断轮询taskChan中的信息，直到最后一个任务完成
 	//调用执行结构的Timer方法，并退出线程。
 	for {
@@ -179,7 +177,6 @@ func (es *ExecSchedule) Run() { // {{{
 func (es *ExecSchedule) RunTasks() (err error) { // {{{
 	//启动独立的任务
 	for _, et := range es.execTasks {
-		fmt.Println(et.task.Name, len(et.relExecTasks), et.state)
 		//依赖任务列表为空，任务可以执行
 		if len(et.relExecTasks) == 0 && (et.state == 0 || et.state == 2) {
 
@@ -252,12 +249,14 @@ func (ej *ExecJob) InitExecJob(es *ExecSchedule) (err error) { // {{{
 		if es.schedule.NextStart != t.NextRunTime {
 			continue
 		}
+		fmt.Println(t.NextRunTime)
 		if err = et.InitExecTask(es); err != nil {
 			e := fmt.Sprintf("\n[ej.InitExecJob] %s %s", ej.job.Name, err.Error())
 			return errors.New(e)
 		}
 		ej.execTasks[t.Id] = et
 		es.execTasks[t.Id] = et
+		fmt.Println(et.task.NextRunTime, t.NextRunTime)
 	} // }}}
 
 	ej.taskCnt = len(ej.execTasks)
@@ -282,7 +281,7 @@ func (ej *ExecJob) Start() (err error) { // {{{
 } // }}}
 
 func (ej *ExecJob) TaskDone(et *ExecTask) (err error) { // {{{
-	et.task.NextTime()
+	//et.task.NextTime()
 	delete(ej.execTasks, et.task.Id)
 	ej.taskCnt--
 	//计算任务完成百分比
@@ -347,7 +346,9 @@ func (et *ExecTask) InitExecTask(es *ExecSchedule) error { // {{{
 		//将execTask设置为依赖任务的下级任务
 		retask.nextExecTasks[et.task.Id] = et
 	}
-
+	fmt.Println(et.task.NextRunTime)
+	et.task.NextTime()
+	fmt.Println(et.task.NextRunTime)
 	return nil
 } // }}}
 
@@ -406,7 +407,7 @@ func (et *ExecTask) Run(taskChan chan *ExecTask) { // {{{
 	et.state = 3
 
 	if client, err := rpc.Dial("tcp", et.task.Address+g.Port); err == nil {
-		_ = client.Call("CmdExecuter.Run", task, &rl)
+		err = client.Call("CmdExecuter.Run", task, &rl)
 		if rl.Err != "" {
 			et.output = rl.Err
 			et.state = 4

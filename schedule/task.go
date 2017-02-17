@@ -25,7 +25,7 @@ type Task struct { // {{{
 	Attr         map[string]string // 任务的属性信息
 	JobId        int64             //所属作业ID
 	RelTasksId   []int64           //依赖的任务Id
-	RelTasks     map[string]*Task  //`json:"-"` //依赖的任务
+	RelTasks     map[int64]*Task   //`json:"-"` //依赖的任务
 	RelTaskCnt   int64             //依赖的任务数量
 	CreateUserId int64             //创建人
 	CreateTime   *time.Time        //创人
@@ -42,6 +42,7 @@ type Task struct { // {{{
 //      依赖的Task列表
 //失败返回错误信息。
 func (t *Task) InitTask(s *Schedule) error { // {{{
+	g.L.Debugf("InitTask[%s] Start ...\n", t.Name)
 	err := t.getTask()
 	if err != nil {
 		e := fmt.Sprintf("\n[t.InitTask] %s.", err.Error())
@@ -61,13 +62,13 @@ func (t *Task) InitTask(s *Schedule) error { // {{{
 	}
 
 	t.RelTasksId = make([]int64, 0)
-	t.RelTasks = make(map[string]*Task)
+	t.RelTasks = make(map[int64]*Task)
 	t.RelTaskCnt = 0
 
 	err = t.getRelTaskId()
 	for _, rtid := range t.RelTasksId {
 		rt := s.GetTaskById(rtid)
-		t.RelTasks[string(rtid)] = rt
+		t.RelTasks[rtid] = rt
 		if rt == nil {
 			e := fmt.Sprintf("[t.InitTask] Task [%d] not found RelTask [%d] .\n", t.Id, rtid)
 			g.L.Warningln(e)
@@ -79,11 +80,16 @@ func (t *Task) InitTask(s *Schedule) error { // {{{
 
 	s.addTaskList(t)
 	t.NextTime()
+	g.L.Debugf("InitTask[%s] End ...\n", t.Name)
 	return nil
 } // }}}
 
 func (t *Task) NextTime() error {
-	t.NextRunTime, _ = getCountDownTime(t.TaskCyc, []int{0}, []time.Duration{t.StartSecond})
+	if t.RelTaskCnt == 0 {
+		t.NextRunTime, _ = getCountDownTime(t.TaskCyc, []int{0}, []time.Duration{t.StartSecond})
+	} else {
+		t.NextRunTime = t.RelTasks[t.RelTasksId[0]].NextRunTime
+	}
 	return nil
 }
 
@@ -158,7 +164,7 @@ func (t *Task) DeleteRelTask(relid int64) error { // {{{
 	}
 	t.RelTasksId = append(t.RelTasksId[0:i], t.RelTasksId[i+1:]...)
 	t.RelTaskCnt--
-	delete(t.RelTasks, string(relid))
+	delete(t.RelTasks, relid)
 
 	err := t.deleteRelTask(relid)
 	if err != nil {
@@ -173,7 +179,7 @@ func (t *Task) DeleteRelTask(relid int64) error { // {{{
 func (t *Task) AddRelTask(rt *Task) (err error) { // {{{
 	t.RelTasksId = append(t.RelTasksId, rt.Id)
 	t.RelTaskCnt++
-	t.RelTasks[string(rt.Id)] = rt
+	t.RelTasks[rt.Id] = rt
 
 	err = t.addRelTask(rt.Id)
 	if err != nil {

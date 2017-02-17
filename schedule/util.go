@@ -16,7 +16,7 @@ func getCountDown(cyc string, sm []int, ss []time.Duration) (countDown time.Dura
 } // }}}
 
 func getCountDownTime(cyc string, sm []int, ss []time.Duration) (starttime time.Time, err error) { // {{{
-	now := GetNow()
+	now := time.Now()
 	var startTime time.Time
 	var b bool //执行时间是否在当前时间之后的标志
 
