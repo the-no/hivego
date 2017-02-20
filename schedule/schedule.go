@@ -172,24 +172,27 @@ func (sl *ScheduleManager) DeleteSchedule(id int64) error { // {{{
 
 //调度信息结构
 type Schedule struct { // {{{
-	Id           int64           //调度ID
-	Name         string          //调度名称
-	Count        int8            //调度次数
-	Cyc          string          //调度周期
-	StartSecond  []time.Duration //启动时间
-	StartMonth   []int           //启动月份
-	NextStart    time.Time       //下次启动时间
-	TimeOut      int64           //最大执行时间
-	Jobs         []*Job          //作业列表
-	Tasks        []*Task         `json:"-"` //任务列表
-	isRefresh    chan bool       `json:"-"` //是否刷新标志
-	Desc         string          //调度说明
-	JobCnt       int             //调度中作业数量
-	TaskCnt      int             //调度中任务数量
-	CreateUserId int64           //创建人
-	CreateTime   time.Time       //创人
-	ModifyUserId int64           //修改人
-	ModifyTime   time.Time       //修改时间
+	Id             int64           //调度ID
+	Name           string          //调度名称
+	Count          int8            //调度次数
+	Cyc            string          //调度周期
+	StartSecond    []time.Duration //启动时间
+	StartMonth     []int           //启动月份
+	NextStart      time.Time       //下次启动时间
+	TimeOut        int64           //最大执行时间
+	Jobs           []*Job          //作业列表
+	Tasks          []*Task         `json:"-"` //任务列表
+	isRefresh      chan bool       `json:"-"` //是否刷新标志
+	Desc           string          //调度说明
+	JobCnt         int             //调度中作业数量
+	TaskCnt        int             //调度中任务数量
+	CreateUserId   int64           //创建人
+	CreateTime     time.Time       //创人
+	ModifyUserId   int64           //修改人
+	ModifyTime     time.Time       //修改时间
+	updateTaskChan chan *Task
+	doTaskChan     chan *Task
+	delTaskChan    chan *Task
 } // }}}
 
 //按时启动Schedule，Timer中会根据Schedule的周期以及启动时间计算下次
@@ -216,11 +219,11 @@ func (s *Schedule) Timer() { // {{{
 		}
 		g.L.Debugln(s.Name, s.Tasks[0].Name, s.NextStart, countDown)
 
+		es := ExecScheduleWarper(s)
+		g.Schedules.AddExecSchedule(es)
 		select {
 		case <-time.After(countDown):
 			//构建执行结构链
-			es := ExecScheduleWarper(s)
-			g.Schedules.AddExecSchedule(es)
 			err := es.InitExecSchedule()
 			if err != nil {
 				e := fmt.Sprintf("[s.Timer] Init Execschedule [%d %s] error %s.\n", s.Id, s.Name, err.Error())
@@ -232,6 +235,11 @@ func (s *Schedule) Timer() { // {{{
 			g.L.Print(l)
 			//启动线程执行调度任务
 			go es.Run()
+		case t := <-s.updateTaskChan:
+			s.updateTask(t)
+		case <-s.doTaskChan:
+		case <-s.delTaskChan:
+
 		case <-s.isRefresh:
 			l := fmt.Sprintf("[s.Timer] schedule [%d %s] is refresh.\n", s.Id, s.Name)
 			g.L.Println(l)
@@ -247,6 +255,9 @@ func (s *Schedule) Timer() { // {{{
 func (s *Schedule) InitSchedule() error { // {{{
 	g.L.Infof("Init Schedule[%s] Start ...\n", s.Name)
 	err := s.getSchedule()
+	s.updateTaskChan = make(chan *Task, 2)
+	s.doTaskChan = make(chan *Task, 2)
+	s.delTaskChan = make(chan *Task, 2)
 	if err != nil {
 		e := fmt.Sprintf("\n[s.InitSchedule] get schedule [%d] error %s.", s.Id, err.Error())
 		return errors.New(e)
@@ -293,25 +304,37 @@ func (s *Schedule) GetTaskById(id int64) *Task { // {{{
 
 //增加Task，将参数中的Task加入Schedule中，并调用其add方法持久化。
 func (s *Schedule) AddTask(task *Task) error { // {{{
-	err := task.AddTask()
-	if err != nil {
-		e := fmt.Sprintf("\n[s.AddTask] %s.", err.Error())
-		return errors.New(e)
-	}
 
-	s.Tasks = append(s.Tasks, task)
-	s.TaskCnt = len(s.Tasks)
+	s.updateTaskChan <- task
 
-	j, err := s.GetJobById(task.JobId)
-	if err != nil {
-		e := fmt.Sprintf("\n[s.AddTask] not found job by id %d", task.JobId)
-		return errors.New(e)
-	}
-	j.Tasks[string(task.Id)] = task
-	j.TaskCnt++
-
-	return err
+	return nil
 } // }}}
+
+func (s *Schedule) updateTask(task *Task) error {
+	i := -1
+	for k, t := range s.Tasks {
+		if t.Id == task.Id {
+			i = k
+		}
+	}
+	if i == -1 {
+
+		s.Tasks = append(s.Tasks, task)
+		s.TaskCnt = len(s.Tasks)
+
+		j, err := s.GetJobById(task.JobId)
+		if err != nil {
+			e := fmt.Sprintf("\n[s.AddTask] not found job by id %d", task.JobId)
+			return errors.New(e)
+		}
+		j.Tasks[string(task.Id)] = task
+		j.TaskCnt++
+	} else {
+		s.Tasks[i] = task
+	}
+	return nil
+
+}
 
 //DeleteTask方法用来删除指定id的Task。首先会根据传入参数在Schedule的Tasks列
 //表中查出对应的Task。然后将其从Tasks列表中去除，将其从所属Job中去除，调用

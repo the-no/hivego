@@ -49,7 +49,6 @@ func (es *ExecSchedule) InitExecSchedule() (err error) { // {{{
 		return errors.New(fmt.Sprintf("\n[es.InitExecSchedule] Save Log Failed %s", err.Error()))
 	}
 
-	//if es.schedule.Job != nil {
 	for _, j := range es.schedule.Jobs {
 		execJob := ExecJobWarper(es.batchId, j)
 		err = execJob.InitExecJob(es)

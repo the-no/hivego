@@ -277,7 +277,6 @@ func UpdateJob(r render.Render, Ss *schedule.ScheduleManager, job schedule.Job) 
 func AddTask(params martini.Params, r render.Render, Ss *schedule.ScheduleManager, task schedule.Task) { // {{{
 	sid, _ := params["sid"]
 	ssid, _ := strconv.Atoi(sid)
-
 	if task.Name == "" {
 		e := fmt.Sprintf("[AddTask] name is required")
 		g.L.Warningln(e)
@@ -285,20 +284,24 @@ func AddTask(params martini.Params, r render.Render, Ss *schedule.ScheduleManage
 		return
 	}
 
-	task.TaskType = 1
-	task.CreateUserId = 1
-	task.ModifyUserId = 1
-	task.CreateTime = NowTimePtr()
-	task.ModifyTime = NowTimePtr()
+	t := &task
+	t.TaskType = 1
+	t.CreateUserId = 1
+	t.ModifyUserId = 1
+	t.CreateTime = NowTimePtr()
+	t.ModifyTime = NowTimePtr()
 
-	if s := Ss.GetScheduleById(int64(ssid)); s != nil {
-		err := s.AddTask(&task)
+	if err := t.AddTask(); err != nil {
 		if err != nil {
 			e := fmt.Sprintf("[AddTask] add task error %s.", err.Error())
 			g.L.Warningln(e)
 			r.JSON(500, e)
 			return
 		}
+	}
+
+	if s := Ss.GetScheduleById(int64(ssid)); s != nil {
+		s.AddTask(t)
 	}
 	r.JSON(200, task)
 
