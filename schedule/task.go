@@ -3,6 +3,7 @@ package schedule
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 )
 
@@ -25,7 +26,7 @@ type Task struct { // {{{
 	Attr         map[string]string // 任务的属性信息
 	JobId        int64             //所属作业ID
 	RelTasksId   []int64           //依赖的任务Id
-	RelTasks     map[int64]*Task   //`json:"-"` //依赖的任务
+	RelTasks     map[string]*Task  //`json:"-"` //依赖的任务
 	RelTaskCnt   int64             //依赖的任务数量
 	CreateUserId int64             //创建人
 	CreateTime   *time.Time        //创人
@@ -62,15 +63,16 @@ func (t *Task) InitTask(s *Schedule) error { // {{{
 	}
 
 	t.RelTasksId = make([]int64, 0)
-	t.RelTasks = make(map[int64]*Task)
+	t.RelTasks = make(map[string]*Task)
 	t.RelTaskCnt = 0
 
 	err = t.getRelTaskId()
 	for _, rtid := range t.RelTasksId {
 		rt := s.GetTaskById(rtid)
-		t.RelTasks[rtid] = rt
+		idkey := strconv.FormatInt(rtid, 10)
+		t.RelTasks[idkey] = rt
 		if rt == nil {
-			e := fmt.Sprintf("[t.InitTask] Task [%d] not found RelTask [%d] .\n", t.Id, rtid)
+			e := fmt.Sprintf("[t.InitTask] Task [%d] not found RelTask [%s] .\n", t.Id, idkey)
 			g.L.Warningln(e)
 			continue
 		}
@@ -79,7 +81,6 @@ func (t *Task) InitTask(s *Schedule) error { // {{{
 	}
 
 	s.addTaskList(t)
-	t.NextTime()
 	g.L.Debugf("InitTask[%s] End ...\n", t.Name)
 	return nil
 } // }}}
@@ -88,7 +89,8 @@ func (t *Task) NextTime() error {
 	if t.RelTaskCnt == 0 {
 		t.NextRunTime, _ = getCountDownTime(t.TaskCyc, []int{0}, []time.Duration{t.StartSecond})
 	} else {
-		t.NextRunTime = t.RelTasks[t.RelTasksId[0]].NextRunTime
+		idkey := strconv.FormatInt(t.RelTasksId[0], 10)
+		t.NextRunTime = t.RelTasks[idkey].NextRunTime
 	}
 	return nil
 }
@@ -118,6 +120,81 @@ func (t *Task) UpdateTask() error { // {{{
 
 	return err
 } // }}}
+
+func (t *Task) Refresh(s *Schedule) error { // {{{
+	g.L.Debugf("Refresh[%s] Start ...\n", t.Name)
+	i := -1
+	for k, task := range s.Tasks {
+		if task.Id == t.Id {
+			i = k
+		}
+	}
+
+	err := t.getTask()
+	if err != nil {
+		/*e := fmt.Sprintf("\n[t.InitTask] %s.", err.Error())
+		return errors.New(e)*/
+		t := s.Tasks[i]
+		s.Tasks = append(s.Tasks[0:i], s.Tasks[i+1:]...)
+		s.TaskCnt = len(s.Tasks)
+		j, er := s.GetJobById(t.JobId)
+		if er != nil {
+			e := fmt.Sprintf("\n[s.DeleteTask] get job [%d] error %s", t.JobId, er.Error())
+			return errors.New(e)
+		}
+
+		err := j.DeleteTask(t.Id)
+		if err != nil {
+			e := fmt.Sprintf("\n[s.DeleteTask] DeleteTask error %s", err.Error())
+			return errors.New(e)
+		}
+	}
+
+	err = t.getTaskAttr()
+	if err != nil {
+		e := fmt.Sprintf("\n[t.InitTask] %s.", err.Error())
+		return errors.New(e)
+	}
+
+	err = t.getTaskParam()
+	if err != nil {
+		e := fmt.Sprintf("\n[t.InitTask] %s.", err.Error())
+		return errors.New(e)
+	}
+
+	t.RelTasksId = make([]int64, 0)
+	t.RelTasks = make(map[string]*Task)
+	t.RelTaskCnt = 0
+
+	err = t.getRelTaskId()
+	for _, rtid := range t.RelTasksId {
+		rt := s.GetTaskById(rtid)
+		idkey := strconv.FormatInt(rtid, 10)
+		t.RelTasks[idkey] = rt
+		if rt == nil {
+			e := fmt.Sprintf("[t.InitTask] Task [%d] not found RelTask [%s] .\n", t.Id, idkey)
+			g.L.Warningln(e)
+			continue
+		}
+		t.RelTaskCnt++
+
+	}
+
+	if i == -1 {
+		s.addTaskList(t)
+		s.TaskCnt = len(s.Tasks)
+		j, err := s.GetJobById(t.JobId)
+		if err != nil {
+			e := fmt.Sprintf("\n[s.AddTask] not found job by id %d", t.JobId)
+			return errors.New(e)
+		}
+		idkey := strconv.FormatInt(t.Id, 10)
+		j.Tasks[idkey] = t
+		j.TaskCnt++
+	}
+	g.L.Debugf("InitTask[%s] End ...\n", t.Name)
+	return nil
+}
 
 //AddTask方法持久化当前的Task信息。
 //调用add方法将Task基本信息持久化。
@@ -156,15 +233,15 @@ func (t *Task) AddTask() (err error) { // {{{
 
 //删除依赖的任务关系
 func (t *Task) DeleteRelTask(relid int64) error { // {{{
-	var i int
-	for k, v := range t.RelTasksId {
-		if v == relid {
-			i = k
+	/*	var i int
+		for k, v := range t.RelTasksId {
+			if v == relid {
+				i = k
+			}
 		}
-	}
-	t.RelTasksId = append(t.RelTasksId[0:i], t.RelTasksId[i+1:]...)
-	t.RelTaskCnt--
-	delete(t.RelTasks, relid)
+		t.RelTasksId = append(t.RelTasksId[0:i], t.RelTasksId[i+1:]...)
+		t.RelTaskCnt--
+		delete(t.RelTasks, relid)*/
 
 	err := t.deleteRelTask(relid)
 	if err != nil {
@@ -177,9 +254,9 @@ func (t *Task) DeleteRelTask(relid int64) error { // {{{
 
 //增加依赖的任务
 func (t *Task) AddRelTask(rt *Task) (err error) { // {{{
-	t.RelTasksId = append(t.RelTasksId, rt.Id)
-	t.RelTaskCnt++
-	t.RelTasks[rt.Id] = rt
+	/*	t.RelTasksId = append(t.RelTasksId, rt.Id)
+		t.RelTaskCnt++
+		t.RelTasks[rt.Id] = rt*/
 
 	err = t.addRelTask(rt.Id)
 	if err != nil {

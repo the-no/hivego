@@ -245,22 +245,21 @@ func (ej *ExecJob) InitExecJob(es *ExecSchedule) (err error) { // {{{
 	//构建当前作业中的任务执行结构
 	for _, t := range ej.job.Tasks { // {{{
 		et := ExecTaskWarper(ej, t)
-		if es.schedule.NextStart != t.NextRunTime {
-			continue
+		fmt.Println("execTasks :", t.Id, es.schedule.NextStart, t.NextRunTime)
+		if es.schedule.NextStart == t.NextRunTime {
+			ej.execTasks[t.Id] = et
+			es.execTasks[t.Id] = et
 		}
-		fmt.Println(t.NextRunTime)
+
+	} // }}}
+	ej.taskCnt = len(ej.execTasks)
+	for _, et := range es.execTasks {
 		if err = et.InitExecTask(es); err != nil {
 			e := fmt.Sprintf("\n[ej.InitExecJob] %s %s", ej.job.Name, err.Error())
 			return errors.New(e)
 		}
-		ej.execTasks[t.Id] = et
-		es.execTasks[t.Id] = et
-		fmt.Println(et.task.NextRunTime, t.NextRunTime)
-	} // }}}
-
-	ej.taskCnt = len(ej.execTasks)
-
-	return err
+	}
+	return nil
 
 } // }}}
 
@@ -342,12 +341,10 @@ func (et *ExecTask) InitExecTask(es *ExecSchedule) error { // {{{
 		retask := es.execTasks[relTask.Id]
 		et.relExecTasks[relTask.Id] = retask
 
+		fmt.Printf("task : %v, reltask : %v retask :%v ", et.task, relTask, retask)
 		//将execTask设置为依赖任务的下级任务
 		retask.nextExecTasks[et.task.Id] = et
 	}
-	fmt.Println(et.task.NextRunTime)
-	et.task.NextTime()
-	fmt.Println(et.task.NextRunTime)
 	return nil
 } // }}}
 
@@ -415,6 +412,7 @@ func (et *ExecTask) Run(taskChan chan *ExecTask) { // {{{
 	} else {
 		e := fmt.Sprintf("connect task.Address[%s] error %s", et.task.Address+g.Port,
 			err.Error())
+		fmt.Println(err)
 		panic(e)
 	}
 

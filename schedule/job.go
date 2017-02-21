@@ -87,11 +87,11 @@ func (j *Job) UpdateTask(task *Task) (err error) { // {{{
 	t.Cmd, t.TimeOut, t.Param = task.Cmd, task.TimeOut, task.Param
 	t.Attr, t.ModifyUserId, t.ModifyTime = task.Attr, task.ModifyUserId, NowTimePtr()
 
-	if err := t.UpdateTask(); err != nil {
+	/*if err := t.UpdateTask(); err != nil {
 		e := fmt.Sprintf("\n[j.UpdateTask] UpdateTask error %s.", err.Error())
 		return errors.New(e)
 	}
-
+	*/
 	return nil
 } // }}}
 

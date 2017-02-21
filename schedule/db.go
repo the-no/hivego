@@ -174,8 +174,6 @@ func (s *Schedule) getSchedule() error { // {{{
 	if s.Id == 0 {
 		s.Name = "DefaultScd"
 		s.Cyc = "mi"
-		s.Jobs = make([]*Job, 0)
-		s.Tasks = make([]*Task, 0)
 		s.StartSecond = append(s.StartSecond, time.Duration(0))
 		s.StartMonth = append(s.StartMonth, int(0))
 		s.Jobs = make([]*Job, 0)
@@ -437,7 +435,7 @@ func (t *Task) getTask() error { // {{{
 		t.StartSecond = time.Duration(td) * time.Second
 		//初始化relTask、param的内存
 		t.RelTasksId = make([]int64, 0)
-		t.RelTasks = make(map[int64]*Task)
+		t.RelTasks = make(map[string]*Task)
 		t.Param = make([]string, 0)
 		t.Attr = make(map[string]string)
 	}

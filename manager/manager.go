@@ -301,7 +301,7 @@ func AddTask(params martini.Params, r render.Render, Ss *schedule.ScheduleManage
 	}
 
 	if s := Ss.GetScheduleById(int64(ssid)); s != nil {
-		s.AddTask(t)
+		s.UpdateTask(t)
 	}
 	r.JSON(200, task)
 
@@ -310,25 +310,35 @@ func AddTask(params martini.Params, r render.Render, Ss *schedule.ScheduleManage
 //deleteTask从调度结构中删除指定的Task，并持久化。
 func DeleteTask(params martini.Params, r render.Render, Ss *schedule.ScheduleManager) { // {{{
 	sid, _ := strconv.Atoi(params["sid"])
-	jid, _ := strconv.Atoi(params["jid"])
+	//jid, _ := strconv.Atoi(params["jid"])
 	id, _ := strconv.Atoi(params["id"])
 
-	if sid == 0 || jid == 0 || id == 0 {
-		e := fmt.Sprintf("[Delete Task] sid jid id is required")
+	if id == 0 {
+		e := fmt.Sprintf("[Delete Task] id is required")
 		g.L.Warningln(e)
 		r.JSON(500, e)
 		return
 	}
 
 	if s := Ss.GetScheduleById(int64(sid)); s != nil {
-		if err := s.DeleteTask(int64(id)); err != nil {
+		t := s.GetTaskById(int64(sid))
+		/*	if err := s.DeleteTask(int64(id)); err != nil {
 			e := fmt.Sprintf("[Delete Task] delete task error %s.", err.Error())
 			g.L.Warningln(e)
 			r.JSON(500, e)
 			return
-		} else {
-			r.JSON(200, nil)
+		}*/
+		if err := t.Delete(); err != nil {
+			e := fmt.Sprintf("\n[s.DeleteTask] schedule [%d] Delete error %s.", err.Error())
+			r.JSON(500, e)
+			return
 		}
+		r.JSON(200, nil)
+		s.UpdateTask(t)
+	} else {
+		e := fmt.Sprintf("[Delete Task] delete task error Not Found Schedule[%d].", sid)
+		g.L.Warningln(e)
+		r.JSON(500, e)
 	}
 
 } // }}}
@@ -337,11 +347,13 @@ func DeleteTask(params martini.Params, r render.Render, Ss *schedule.ScheduleMan
 //持久化并更新至Job中。
 //成功返回更新后的Task信息
 func UpdateTask(params martini.Params, r render.Render, Ss *schedule.ScheduleManager, task schedule.Task) { // {{{
-	var err error
-	sid, sidok := params["sid"]
+	//var err error
+	sid, _ := params["sid"]
 	ssid, _ := strconv.Atoi(sid)
+	id, _ := strconv.Atoi(params["id"])
 
-	if !sidok || task.Name == "" || task.JobId == 0 {
+	t := &task
+	if t.Name == "" {
 		e := fmt.Sprintf("[UpdateTask] task name is required")
 		g.L.Warningln(e)
 		r.JSON(500, e)
@@ -349,26 +361,29 @@ func UpdateTask(params martini.Params, r render.Render, Ss *schedule.ScheduleMan
 	}
 
 	if s := Ss.GetScheduleById(int64(ssid)); s != nil {
-		j, err := s.GetJobById(task.JobId)
-		if err != nil {
-			e := fmt.Sprintf("[UpdateTask] get job error %s.", err.Error())
-			g.L.Warningln(e)
+		t := s.GetTaskById(int64(id))
+		t.Name, t.Desc, t.Address = task.Name, task.Desc, task.Address
+		t.TaskType, t.TaskCyc, t.StartSecond = task.TaskType, task.TaskCyc, task.StartSecond
+		t.Cmd, t.TimeOut, t.Param = task.Cmd, task.TimeOut, task.Param
+		t.Attr, t.ModifyUserId, t.ModifyTime = task.Attr, task.ModifyUserId, NowTimePtr()
+		if err := t.UpdateTask(); err != nil {
+			e := fmt.Sprintf("\n[UpdateTask] UpdateTask error %s.", err.Error())
 			r.JSON(500, e)
+			g.L.Warningln(e)
 			return
+		} else {
+			if s := Ss.GetScheduleById(int64(ssid)); s != nil {
+				s.UpdateTask(t)
+			}
+			r.JSON(200, task)
 		}
-
-		err = j.UpdateTask(&task)
-	}
-
-	if err == nil {
-		r.JSON(200, task)
 	} else {
-		e := fmt.Sprintf("[UpdateTask] update task error %s.", err.Error())
+		e := fmt.Sprintf("[Delete Task] delete task error Not Found Schedule[%d].", ssid)
 		g.L.Warningln(e)
 		r.JSON(500, e)
-		return
 	}
 
+	return
 } // }}}
 
 func GetJobsForSchedule(params martini.Params, r render.Render, res http.ResponseWriter, Ss *schedule.ScheduleManager) { // {{{
@@ -445,6 +460,9 @@ func AddRelTask(params martini.Params, ctx *web.Context, r render.Render, Ss *sc
 			r.JSON(500, e)
 			return
 		}
+		if s := Ss.GetScheduleById(int64(sid)); s != nil {
+			s.UpdateTask(t)
+		}
 		r.JSON(200, t)
 	}
 
@@ -479,6 +497,9 @@ func DeleteRelTask(params martini.Params, ctx *web.Context, r render.Render, Ss 
 			g.L.Warningln(e)
 			r.JSON(500, e)
 			return
+		}
+		if s := Ss.GetScheduleById(int64(sid)); s != nil {
+			s.UpdateTask(t)
 		}
 		r.JSON(200, t)
 	}

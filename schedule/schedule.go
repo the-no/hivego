@@ -192,7 +192,6 @@ type Schedule struct { // {{{
 	ModifyTime     time.Time       //修改时间
 	updateTaskChan chan *Task
 	doTaskChan     chan *Task
-	delTaskChan    chan *Task
 } // }}}
 
 //按时启动Schedule，Timer中会根据Schedule的周期以及启动时间计算下次
@@ -203,6 +202,10 @@ func (s *Schedule) Timer() { // {{{
 		e := fmt.Sprintf("[s.Timer] Schedule [%s] Cyc is not set!", s.Name)
 		g.L.Warningln(e)
 		return
+	}
+
+	for _, t := range s.Tasks {
+		t.NextTime()
 	}
 	var countDown time.Duration
 	for {
@@ -235,11 +238,13 @@ func (s *Schedule) Timer() { // {{{
 			g.L.Print(l)
 			//启动线程执行调度任务
 			go es.Run()
+			for _, t := range s.Tasks {
+				if t.NextRunTime == s.NextStart {
+					t.NextTime()
+				}
+			}
 		case t := <-s.updateTaskChan:
-			s.updateTask(t)
-		case <-s.doTaskChan:
-		case <-s.delTaskChan:
-
+			t.Refresh(s)
 		case <-s.isRefresh:
 			l := fmt.Sprintf("[s.Timer] schedule [%d %s] is refresh.\n", s.Id, s.Name)
 			g.L.Println(l)
@@ -257,7 +262,7 @@ func (s *Schedule) InitSchedule() error { // {{{
 	err := s.getSchedule()
 	s.updateTaskChan = make(chan *Task, 2)
 	s.doTaskChan = make(chan *Task, 2)
-	s.delTaskChan = make(chan *Task, 2)
+	//s.delTaskChan = make(chan int64, 2)
 	if err != nil {
 		e := fmt.Sprintf("\n[s.InitSchedule] get schedule [%d] error %s.", s.Id, err.Error())
 		return errors.New(e)
@@ -273,6 +278,9 @@ func (s *Schedule) InitSchedule() error { // {{{
 	g.L.Infof("Init Schedule[%s] End ...\n", s.Name)
 	return nil
 } // }}}
+func (s *Schedule) UpdateTask(t *Task) {
+	s.updateTaskChan <- t
+}
 
 //刷新Schedule
 func (s *Schedule) refresh() { // {{{
@@ -303,14 +311,14 @@ func (s *Schedule) GetTaskById(id int64) *Task { // {{{
 } // }}}
 
 //增加Task，将参数中的Task加入Schedule中，并调用其add方法持久化。
-func (s *Schedule) AddTask(task *Task) error { // {{{
+/*func (s *Schedule) AddTask(task *Task) error { // {{{
 
 	s.updateTaskChan <- task
 
 	return nil
-} // }}}
+} */ // }}}
 
-func (s *Schedule) updateTask(task *Task) error {
+/*func (s *Schedule) updateTask(task *Task) error {
 	i := -1
 	for k, t := range s.Tasks {
 		if t.Id == task.Id {
@@ -330,11 +338,15 @@ func (s *Schedule) updateTask(task *Task) error {
 		j.Tasks[string(task.Id)] = task
 		j.TaskCnt++
 	} else {
-		s.Tasks[i] = task
+		t := s.Tasks[i]
+		t.Name, t.Desc, t.Address = task.Name, task.Desc, task.Address
+		t.TaskType, t.TaskCyc, t.StartSecond = task.TaskType, task.TaskCyc, task.StartSecond
+		t.Cmd, t.TimeOut, t.Param = task.Cmd, task.TimeOut, task.Param
+		t.Attr, t.ModifyUserId, t.ModifyTime = task.Attr, task.ModifyUserId, NowTimePtr()
 	}
 	return nil
 
-}
+}*/
 
 //DeleteTask方法用来删除指定id的Task。首先会根据传入参数在Schedule的Tasks列
 //表中查出对应的Task。然后将其从Tasks列表中去除，将其从所属Job中去除，调用
@@ -376,6 +388,23 @@ func (s *Schedule) DeleteTask(id int64) error { // {{{
 
 	return err
 } // }}}
+
+/*func (s *Schedule) UpdateTask(task *Task) error {
+	s.updateTaskChan <- task
+	return nil
+
+}*/
+
+/*func (s *Schedule) updateTask(task *Task) error {
+	j, err := s.GetJobById(t.JobId)
+	if err != nil {
+		e := fmt.Sprintf("[UpdateTask] get job error %s.", err.Error())
+		g.L.Warningln(e)
+		return errors.New(e)
+	}
+
+	err = j.UpdateTask(task)
+}*/
 
 //GetJobById遍历Jobs列表，返回调度中指定Id的Job，若没找到返回nil
 func (s *Schedule) GetJobById(id int64) (*Job, error) { // {{{
