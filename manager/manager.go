@@ -100,6 +100,8 @@ func controller(m *martini.ClassicMartini) { // {{{
 		//TaskRelation部分
 		r.Post("/:id/reltask/:relid", AddRelTask)
 		r.Delete("/:id/reltask/:relid", DeleteRelTask)
+
+		r.Post("/dotasks/:id", DoTask)
 	})
 
 } // }}}
@@ -304,13 +306,39 @@ func AddTask(params martini.Params, r render.Render, Ss *schedule.ScheduleManage
 		s.UpdateTask(t)
 	}
 	r.JSON(200, task)
-
 } // }}}
+
+func DoTask(params martini.Params, r render.Render, Ss *schedule.ScheduleManager) {
+	sid, _ := strconv.Atoi(params["sid"])
+	id, _ := strconv.Atoi(params["id"])
+
+	if id == 0 {
+		e := fmt.Sprintf("[DoTask Task] id is required")
+		g.L.Warningln(e)
+		r.JSON(500, e)
+		return
+	}
+
+	/*	t := &schedule.Task{Id: int64(id)}
+		if err := t.GetTask(); err != nil {
+			e := fmt.Sprintf("[DoTask Task] DoTask task error Not Found Task[%d].", id)
+			g.L.Warningln(e)
+			r.JSON(500, e)
+		}*/
+	if s := Ss.GetScheduleById(int64(sid)); s != nil {
+		t := s.GetTaskById(int64(id))
+		r.JSON(200, t)
+		s.DoTask(t)
+	} else {
+		e := fmt.Sprintf("[DoTask Task] DoTask task error Not Found Schedule[%d].", sid)
+		g.L.Warningln(e)
+		r.JSON(500, e)
+	}
+}
 
 //deleteTask从调度结构中删除指定的Task，并持久化。
 func DeleteTask(params martini.Params, r render.Render, Ss *schedule.ScheduleManager) { // {{{
 	sid, _ := strconv.Atoi(params["sid"])
-	//jid, _ := strconv.Atoi(params["jid"])
 	id, _ := strconv.Atoi(params["id"])
 
 	if id == 0 {
@@ -333,7 +361,7 @@ func DeleteTask(params martini.Params, r render.Render, Ss *schedule.ScheduleMan
 			r.JSON(500, e)
 			return
 		}
-		r.JSON(200, nil)
+		r.JSON(200, t)
 		s.UpdateTask(t)
 	} else {
 		e := fmt.Sprintf("[Delete Task] delete task error Not Found Schedule[%d].", sid)

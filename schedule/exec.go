@@ -55,10 +55,39 @@ func (es *ExecSchedule) InitExecSchedule() (err error) { // {{{
 		if err != nil {
 			return errors.New(fmt.Sprintf("\n[es.InitExecSchedule] %s", err.Error()))
 		}
+		es.execJobs = append(es.execJobs, execJob)
 		es.taskCnt = es.taskCnt + execJob.taskCnt
 	}
 	return err
 } // }}}
+
+func (es *ExecSchedule) AddExecTask(tasks []*Task) (err error) {
+
+	var i int
+	for k, ej := range es.execJobs {
+		if ej.job.Id == tasks[0].JobId {
+			i = k
+		}
+	}
+	etasks := make([]*ExecTask, 0, len(tasks))
+	for _, t := range tasks {
+		ej := es.execJobs[i]
+		et := ExecTaskWarper(ej, t)
+		ej.execTasks[t.Id] = et
+		es.execTasks[t.Id] = et
+		es.taskCnt = es.taskCnt + 1
+		ej.taskCnt = ej.taskCnt + 1
+		etasks = append(etasks, et)
+	}
+
+	for _, et := range etasks {
+		if err = et.InitExecTask(es); err != nil {
+			e := fmt.Sprintf("\n[ej.InitExecTask] %s %s", et.task.Name, err.Error())
+			return errors.New(e)
+		}
+	}
+	return nil
+}
 
 //ExecSchedule执行前状态记录
 func (es *ExecSchedule) Start() (err error) { // {{{
@@ -245,7 +274,7 @@ func (ej *ExecJob) InitExecJob(es *ExecSchedule) (err error) { // {{{
 	//构建当前作业中的任务执行结构
 	for _, t := range ej.job.Tasks { // {{{
 		et := ExecTaskWarper(ej, t)
-		fmt.Println("execTasks :", t.Id, es.schedule.NextStart, t.NextRunTime)
+		//	fmt.Println(t.Name, t.NextRunTime, es.schedule.NextStart)
 		if es.schedule.NextStart == t.NextRunTime {
 			ej.execTasks[t.Id] = et
 			es.execTasks[t.Id] = et
@@ -279,7 +308,6 @@ func (ej *ExecJob) Start() (err error) { // {{{
 } // }}}
 
 func (ej *ExecJob) TaskDone(et *ExecTask) (err error) { // {{{
-	//et.task.NextTime()
 	delete(ej.execTasks, et.task.Id)
 	ej.taskCnt--
 	//计算任务完成百分比
@@ -409,6 +437,7 @@ func (et *ExecTask) Run(taskChan chan *ExecTask) { // {{{
 			et.state = 4
 			g.L.Infoln("task", et.task.Name, "is error", rl.Stdout)
 		}
+		client.Close()
 	} else {
 		e := fmt.Sprintf("connect task.Address[%s] error %s", et.task.Address+g.Port,
 			err.Error())

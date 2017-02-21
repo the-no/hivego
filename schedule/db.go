@@ -242,7 +242,7 @@ func (s *Schedule) getJobs() error {
                job.modify_user_id,
                job.modify_time
 			FROM scd_job job
-			WHERE job.scd_id=? and disabled = 0 and exec_type = 1`
+			WHERE job.scd_id=?`
 	rows, err := g.HiveConn.Query(sql, s.Id)
 	if err != nil {
 		e := fmt.Sprintf("[\nj.getJob] run Sql %s error %s", sql, err.Error())

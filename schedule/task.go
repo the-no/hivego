@@ -44,6 +44,60 @@ type Task struct { // {{{
 //失败返回错误信息。
 func (t *Task) InitTask(s *Schedule) error { // {{{
 	g.L.Debugf("InitTask[%s] Start ...\n", t.Name)
+	/*	err := t.getTask()
+		if err != nil {
+			e := fmt.Sprintf("\n[t.InitTask] %s.", err.Error())
+			return errors.New(e)
+		}
+
+		err = t.getTaskAttr()
+		if err != nil {
+			e := fmt.Sprintf("\n[t.InitTask] %s.", err.Error())
+			return errors.New(e)
+		}
+
+		err = t.getTaskParam()
+		if err != nil {
+			e := fmt.Sprintf("\n[t.InitTask] %s.", err.Error())
+			return errors.New(e)
+		}
+
+		t.RelTasksId = make([]int64, 0)
+		t.RelTasks = make(map[string]*Task)
+		t.RelTaskCnt = 0
+
+		err = t.getRelTaskId()
+		for _, rtid := range t.RelTasksId {
+			rt := s.GetTaskById(rtid)
+			idkey := strconv.FormatInt(rtid, 10)
+			t.RelTasks[idkey] = rt
+			if rt == nil {
+				e := fmt.Sprintf("[t.InitTask] Task [%d] not found RelTask [%s] .\n", t.Id, idkey)
+				g.L.Warningln(e)
+				continue
+			}
+			t.RelTaskCnt++
+		}*/
+	t.GetTask()
+	t.getRelTaskId()
+	for _, rtid := range t.RelTasksId {
+		rt := s.GetTaskById(rtid)
+		idkey := strconv.FormatInt(rtid, 10)
+		t.RelTasks[idkey] = rt
+		if rt == nil {
+			e := fmt.Sprintf("[t.InitTask] Task [%d] not found RelTask [%s] .\n", t.Id, idkey)
+			g.L.Warningln(e)
+			continue
+		}
+		t.RelTaskCnt++
+	}
+	s.addTaskList(t)
+	g.L.Debugf("InitTask[%s] End ...\n", t.Name)
+	return nil
+} // }}}
+
+func (t *Task) GetTask() error { // {{{
+
 	err := t.getTask()
 	if err != nil {
 		e := fmt.Sprintf("\n[t.InitTask] %s.", err.Error())
@@ -66,29 +120,17 @@ func (t *Task) InitTask(s *Schedule) error { // {{{
 	t.RelTasks = make(map[string]*Task)
 	t.RelTaskCnt = 0
 
-	err = t.getRelTaskId()
-	for _, rtid := range t.RelTasksId {
-		rt := s.GetTaskById(rtid)
-		idkey := strconv.FormatInt(rtid, 10)
-		t.RelTasks[idkey] = rt
-		if rt == nil {
-			e := fmt.Sprintf("[t.InitTask] Task [%d] not found RelTask [%s] .\n", t.Id, idkey)
-			g.L.Warningln(e)
-			continue
-		}
-		t.RelTaskCnt++
-
-	}
-
-	s.addTaskList(t)
-	g.L.Debugf("InitTask[%s] End ...\n", t.Name)
 	return nil
 } // }}}
 
 func (t *Task) NextTime() error {
-	if t.RelTaskCnt == 0 {
+	if t.Disabled != 0 || t.ExecType == 0 {
+		t.NextRunTime = time.Time{}
+	}
+
+	if t.ExecType == 1 {
 		t.NextRunTime, _ = getCountDownTime(t.TaskCyc, []int{0}, []time.Duration{t.StartSecond})
-	} else {
+	} else if t.ExecType == 2 {
 		idkey := strconv.FormatInt(t.RelTasksId[0], 10)
 		t.NextRunTime = t.RelTasks[idkey].NextRunTime
 	}
@@ -132,8 +174,6 @@ func (t *Task) Refresh(s *Schedule) error { // {{{
 
 	err := t.getTask()
 	if err != nil {
-		/*e := fmt.Sprintf("\n[t.InitTask] %s.", err.Error())
-		return errors.New(e)*/
 		t := s.Tasks[i]
 		s.Tasks = append(s.Tasks[0:i], s.Tasks[i+1:]...)
 		s.TaskCnt = len(s.Tasks)

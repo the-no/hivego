@@ -208,19 +208,32 @@ func (s *Schedule) Timer() { // {{{
 		t.NextTime()
 	}
 	var countDown time.Duration
+	//needDotasks := []*Task{}
 	for {
 
+		now := time.Now()
 		sort.Sort(byTime(s.Tasks))
 		countDown = time.Duration(0)
 		if len(s.Tasks) == 0 || s.Tasks[0].NextRunTime.IsZero() {
-			//获取距启动的时间（秒）
 			countDown, _ = getCountDown(s.Cyc, s.StartMonth, s.StartSecond)
 			s.NextStart = time.Now().Add(countDown)
 		} else {
-			s.NextStart = s.Tasks[0].NextRunTime
-			countDown = s.NextStart.Sub(time.Now())
+			for _, t := range s.Tasks {
+				if !t.NextRunTime.IsZero() {
+					s.NextStart = s.Tasks[0].NextRunTime
+					countDown = s.NextStart.Sub(now)
+					break
+				}
+			}
 		}
-		g.L.Debugln(s.Name, s.Tasks[0].Name, s.NextStart, countDown)
+
+		/*	if len(needDotasks) > 0 && countDown > time.Duration(0) {
+			s.NextStart = now
+			countDown = 0
+			for _, t := range needDotasks {
+				t.NextRunTime = s.NextStart
+			}
+		}*/
 
 		es := ExecScheduleWarper(s)
 		g.Schedules.AddExecSchedule(es)
@@ -233,6 +246,9 @@ func (s *Schedule) Timer() { // {{{
 				g.L.Warningln(e)
 				return
 			}
+			/*if len(needDotasks) > 0 {
+				es.AddExecTask(needDotasks)
+			}*/
 			//从元数据库初始化调度链信息
 			l := fmt.Sprintf("[s.Timer] schedule [%d %s] is start.\n", s.Id, s.Name)
 			g.L.Print(l)
@@ -243,6 +259,11 @@ func (s *Schedule) Timer() { // {{{
 					t.NextTime()
 				}
 			}
+		case t := <-s.doTaskChan:
+			//for _, t := range ts {
+			//needDotasks = append(needDotasks, t)
+			t.NextRunTime = now
+			//}
 		case t := <-s.updateTaskChan:
 			t.Refresh(s)
 		case <-s.isRefresh:
@@ -281,6 +302,16 @@ func (s *Schedule) InitSchedule() error { // {{{
 func (s *Schedule) UpdateTask(t *Task) {
 	s.updateTaskChan <- t
 }
+
+func (s *Schedule) DoTask(tasks *Task) {
+	s.doTaskChan <- tasks
+}
+
+/*func (s *Schedule) doTask(tasks *Task) {
+	for _,t := s.Tasks {
+			for
+	}
+}*/
 
 //刷新Schedule
 func (s *Schedule) refresh() { // {{{
