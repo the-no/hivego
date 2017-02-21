@@ -93,6 +93,8 @@ func controller(m *martini.ClassicMartini) { // {{{
 
 	m.Group("/tasks", func(r martini.Router) {
 		//Task部分
+		r.Get("", GetScheduleById)
+		r.Get("/:id", GetTask)
 		r.Post("", binding.Bind(schedule.Task{}), AddTask)
 		r.Put("/:id", binding.Bind(schedule.Task{}), UpdateTask)
 		r.Delete("/:id", DeleteTask)
@@ -114,16 +116,14 @@ func GetSchedules(r render.Render, Ss *schedule.ScheduleManager) { // {{{
 
 //根据参数中的Id，返回对应的Schedule信息
 func GetScheduleById(params martini.Params, r render.Render, Ss *schedule.ScheduleManager) { // {{{
-	if i, ok := params["id"]; ok {
-		id, _ := strconv.Atoi(i)
-		for _, s := range Ss.ScheduleList {
-			if s.Id == int64(id) {
-				r.JSON(200, s)
-				return
-			}
+	i, _ := params["id"]
+	id, _ := strconv.Atoi(i)
+	for _, s := range Ss.ScheduleList {
+		if s.Id == int64(id) {
+			r.JSON(200, s)
+			return
 		}
 	}
-
 	r.JSON(500, fmt.Sprintf("[GetScheduleById] not found Schedule [%s]", params["id"]))
 	return
 
@@ -272,6 +272,27 @@ func UpdateJob(r render.Render, Ss *schedule.ScheduleManager, job schedule.Job) 
 
 } // }}}
 
+func GetTask(params martini.Params, r render.Render, Ss *schedule.ScheduleManager) { // {{{
+	sid, _ := strconv.Atoi(params["sid"])
+	id, _ := strconv.Atoi(params["id"])
+
+	if id == 0 {
+		e := fmt.Sprintf("[GetTask Task] id is required")
+		g.L.Warningln(e)
+		r.JSON(500, e)
+		return
+	}
+
+	if s := Ss.GetScheduleById(int64(sid)); s != nil {
+		t := s.GetTaskById(int64(id))
+		r.JSON(200, t)
+	} else {
+		e := fmt.Sprintf("[GetTask Task] GetTask task error Not Found Schedule[%d].", sid)
+		g.L.Warningln(e)
+		r.JSON(500, e)
+	}
+}
+
 //addTask获取客户端发送的Task信息，调用Task的AddTask方法持久化。
 //成功后根据其中的JobId找到对应Job将其添加
 //成功返回添加好的Job信息
@@ -318,13 +339,6 @@ func DoTask(params martini.Params, r render.Render, Ss *schedule.ScheduleManager
 		r.JSON(500, e)
 		return
 	}
-
-	/*	t := &schedule.Task{Id: int64(id)}
-		if err := t.GetTask(); err != nil {
-			e := fmt.Sprintf("[DoTask Task] DoTask task error Not Found Task[%d].", id)
-			g.L.Warningln(e)
-			r.JSON(500, e)
-		}*/
 	if s := Ss.GetScheduleById(int64(sid)); s != nil {
 		t := s.GetTaskById(int64(id))
 		r.JSON(200, t)
@@ -349,13 +363,7 @@ func DeleteTask(params martini.Params, r render.Render, Ss *schedule.ScheduleMan
 	}
 
 	if s := Ss.GetScheduleById(int64(sid)); s != nil {
-		t := s.GetTaskById(int64(sid))
-		/*	if err := s.DeleteTask(int64(id)); err != nil {
-			e := fmt.Sprintf("[Delete Task] delete task error %s.", err.Error())
-			g.L.Warningln(e)
-			r.JSON(500, e)
-			return
-		}*/
+		t := s.GetTaskById(int64(id))
 		if err := t.Delete(); err != nil {
 			e := fmt.Sprintf("\n[s.DeleteTask] schedule [%d] Delete error %s.", err.Error())
 			r.JSON(500, e)
@@ -459,12 +467,12 @@ func DeleteSchedule(params martini.Params, ctx *web.Context, r render.Render, Ss
 //addRelTask根据Url参数获取到要添加的Task关系
 func AddRelTask(params martini.Params, ctx *web.Context, r render.Render, Ss *schedule.ScheduleManager) { // {{{
 	sid, _ := strconv.Atoi(params["sid"])
-	jid, _ := strconv.Atoi(params["jid"])
+	//jid, _ := strconv.Atoi(params["jid"])
 	id, _ := strconv.Atoi(params["id"])
 	relid, _ := strconv.Atoi(params["relid"])
 
-	if sid == 0 || jid == 0 || id == 0 || relid == 0 {
-		e := fmt.Sprintf("[AddRelTask] [sid jid id relid] is required")
+	if id == 0 || relid == 0 {
+		e := fmt.Sprintf("[AddRelTask] [id relid] is required")
 		g.L.Warningln(e)
 		r.JSON(500, e)
 		return
@@ -488,9 +496,9 @@ func AddRelTask(params martini.Params, ctx *web.Context, r render.Render, Ss *sc
 			r.JSON(500, e)
 			return
 		}
-		if s := Ss.GetScheduleById(int64(sid)); s != nil {
-			s.UpdateTask(t)
-		}
+		//	if s := Ss.GetScheduleById(int64(sid)); s != nil {
+		s.UpdateTask(t)
+		//	}
 		r.JSON(200, t)
 	}
 
@@ -498,12 +506,12 @@ func AddRelTask(params martini.Params, ctx *web.Context, r render.Render, Ss *sc
 
 func DeleteRelTask(params martini.Params, ctx *web.Context, r render.Render, Ss *schedule.ScheduleManager) { // {{{
 	sid, _ := strconv.Atoi(params["sid"])
-	jid, _ := strconv.Atoi(params["jid"])
+	//jid, _ := strconv.Atoi(params["jid"])
 	id, _ := strconv.Atoi(params["id"])
 	relid, _ := strconv.Atoi(params["relid"])
 
-	if sid == 0 || jid == 0 || id == 0 || relid == 0 {
-		e := fmt.Sprintf("[DeleteRelTask] [sid jid id relid] is required")
+	if id == 0 || relid == 0 {
+		e := fmt.Sprintf("[DeleteRelTask] [id relid] is required")
 		g.L.Warningln(e)
 		r.JSON(500, e)
 		return
@@ -526,9 +534,9 @@ func DeleteRelTask(params martini.Params, ctx *web.Context, r render.Render, Ss 
 			r.JSON(500, e)
 			return
 		}
-		if s := Ss.GetScheduleById(int64(sid)); s != nil {
-			s.UpdateTask(t)
-		}
+		//if s := Ss.GetScheduleById(int64(sid)); s != nil {
+		s.UpdateTask(t)
+		//}
 		r.JSON(200, t)
 	}
 

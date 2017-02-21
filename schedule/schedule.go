@@ -172,24 +172,24 @@ func (sl *ScheduleManager) DeleteSchedule(id int64) error { // {{{
 
 //调度信息结构
 type Schedule struct { // {{{
-	Id             int64           //调度ID
-	Name           string          //调度名称
-	Count          int8            //调度次数
-	Cyc            string          //调度周期
-	StartSecond    []time.Duration //启动时间
-	StartMonth     []int           //启动月份
-	NextStart      time.Time       //下次启动时间
-	TimeOut        int64           //最大执行时间
-	Jobs           []*Job          //作业列表
-	Tasks          []*Task         `json:"-"` //任务列表
+	Id             int64           `json:"-"` //调度ID
+	Name           string          `json:"-"` //调度名称
+	Count          int8            `json:"-"` //调度次数
+	Cyc            string          `json:"-"` //调度周期
+	StartSecond    []time.Duration `json:"-"` //启动时间
+	StartMonth     []int           `json:"-"` //启动月份
+	NextStart      time.Time       `json:"-"` //下次启动时间
+	TimeOut        int64           `json:"-"` //最大执行时间
+	Jobs           []*Job          `json:"-"` //作业列表
+	Tasks          []*Task         //任务列表
 	isRefresh      chan bool       `json:"-"` //是否刷新标志
-	Desc           string          //调度说明
-	JobCnt         int             //调度中作业数量
+	Desc           string          `json:"-"` //调度说明
+	JobCnt         int             `json:"-"` //调度中作业数量
 	TaskCnt        int             //调度中任务数量
-	CreateUserId   int64           //创建人
-	CreateTime     time.Time       //创人
-	ModifyUserId   int64           //修改人
-	ModifyTime     time.Time       //修改时间
+	CreateUserId   int64           `json:"-"` //创建人
+	CreateTime     time.Time       `json:"-"` //创人
+	ModifyUserId   int64           `json:"-"` //修改人
+	ModifyTime     time.Time       `json:"-"` //修改时间
 	updateTaskChan chan *Task
 	doTaskChan     chan *Task
 } // }}}

@@ -12,8 +12,8 @@ type Task struct { // {{{
 	Id           int64             // 任务的ID
 	Address      string            // 任务的执行地址
 	Name         string            // 任务名称
-	TaskType     int64             // 任务类型
-	ScheduleCyc  string            //调度周期
+	TaskType     int64             `json:"-"` // 任务类型
+	ScheduleCyc  string            `json:"-"` //调度周期
 	TaskCyc      string            //调度周期
 	ExecType     int8              //`json:"-"`
 	Disabled     int8              //`json:"-"`
@@ -24,7 +24,7 @@ type Task struct { // {{{
 	TimeOut      int64             // 设定超时时间，0表示不做超时限制。单位秒
 	Param        []string          // 任务的参数信息
 	Attr         map[string]string // 任务的属性信息
-	JobId        int64             //所属作业ID
+	JobId        int64             `json:"-"` //所属作业ID
 	RelTasksId   []int64           //依赖的任务Id
 	RelTasks     map[string]*Task  //`json:"-"` //依赖的任务
 	RelTaskCnt   int64             //依赖的任务数量
