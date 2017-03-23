@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"github.com/Sirupsen/logrus"
 	"sort"
-	"sync"
+	//"sync"
 	"time"
 )
 
@@ -25,6 +25,12 @@ type GlobalConfigStruct struct { // {{{
 	Port        string           //Schedule与Worker模块通信端口
 	Schedules   *ScheduleManager //包含全部Schedule列表的结构
 } // }}}
+
+type Timer interface {
+	// Return the next activation time, later than the given time.
+	// Next is invoked initially, and then each time the job is run.
+	Next(time.Time) time.Time
+}
 
 //返回GlobalConfigStruct的默认值。
 func DefaultGlobal() *GlobalConfigStruct { // {{{
@@ -57,10 +63,8 @@ func (sl *ScheduleManager) InitScheduleList() { // {{{
 		g.L.Fatalln(e)
 	}
 	def_scd := &Schedule{
-		Name:        "DefaultScd",
-		Cyc:         "mi",
-		StartSecond: []time.Duration{time.Duration(0)},
-		StartMonth:  []int{0},
+		Name: "DefaultScd",
+		Cyc:  "mi",
 	}
 	sl.ScheduleList = append(sl.ScheduleList, def_scd)
 
@@ -74,9 +78,10 @@ func (sl *ScheduleManager) AddExecSchedule(es *ExecSchedule) { // {{{
 
 //移除一个调度执行结构
 func (sl *ScheduleManager) RemoveExecSchedule(batchId string) { // {{{
-	var lock sync.Mutex
+	/*var lock sync.Mutex
 	lock.Lock()
-	defer lock.Unlock()
+	defer lock.Unlock()*/
+
 	delete(sl.ExecScheduleList, batchId)
 } // }}}
 
@@ -86,8 +91,7 @@ func (sl *ScheduleManager) StartListener() { // {{{
 		//从元数据库初始化调度链信息
 		err := scd.InitSchedule()
 		if err != nil {
-			e := fmt.Sprintf("[sl.StartListener] init schedule [%d] error %s.\n", scd.Id, err.Error())
-			g.L.Warningln(e)
+			g.L.Warningf("[sl.StartListener] init schedule [%d] error %s.\n", scd.Id, err.Error())
 			return
 		}
 		//启动监听，按时启动Schedule
@@ -172,26 +176,25 @@ func (sl *ScheduleManager) DeleteSchedule(id int64) error { // {{{
 
 //调度信息结构
 type Schedule struct { // {{{
-	Id             int64           `json:"-"` //调度ID
-	Name           string          `json:"-"` //调度名称
-	Count          int8            `json:"-"` //调度次数
-	Cyc            string          `json:"-"` //调度周期
-	StartSecond    []time.Duration `json:"-"` //启动时间
-	StartMonth     []int           `json:"-"` //启动月份
-	NextStart      time.Time       `json:"-"` //下次启动时间
-	TimeOut        int64           `json:"-"` //最大执行时间
-	Jobs           []*Job          `json:"-"` //作业列表
-	Tasks          []*Task         //任务列表
-	isRefresh      chan bool       `json:"-"` //是否刷新标志
-	Desc           string          `json:"-"` //调度说明
-	JobCnt         int             `json:"-"` //调度中作业数量
-	TaskCnt        int             //调度中任务数量
-	CreateUserId   int64           `json:"-"` //创建人
-	CreateTime     time.Time       `json:"-"` //创人
-	ModifyUserId   int64           `json:"-"` //修改人
-	ModifyTime     time.Time       `json:"-"` //修改时间
+	Id             int64     `json:"-"` //调度ID
+	Name           string    `json:"-"` //调度名称
+	Count          int8      `json:"-"` //调度次数
+	Cyc            string    `json:"-"` //调度周期
+	NextStart      time.Time `json:"-"` //下次启动时间
+	TimeOut        int64     `json:"-"` //最大执行时间
+	Jobs           []*Job    `json:"-"` //作业列表
+	Tasks          []*Task   //任务列表
+	isRefresh      chan bool `json:"-"` //是否刷新标志
+	Desc           string    `json:"-"` //调度说明
+	JobCnt         int       `json:"-"` //调度中作业数量
+	TaskCnt        int       //调度中任务数量
+	CreateUserId   int64     `json:"-"` //创建人
+	CreateTime     time.Time `json:"-"` //创人
+	ModifyUserId   int64     `json:"-"` //修改人
+	ModifyTime     time.Time `json:"-"` //修改时间
 	updateTaskChan chan *Task
 	doTaskChan     chan *Task
+	delExecSchChan chan string
 } // }}}
 
 //按时启动Schedule，Timer中会根据Schedule的周期以及启动时间计算下次
@@ -199,23 +202,20 @@ type Schedule struct { // {{{
 //从元数据库初始化一下信息，生成执行结构ExecSchedule，执行其Run方法
 func (s *Schedule) Timer() { // {{{
 	if s.Cyc == "" {
-		e := fmt.Sprintf("[s.Timer] Schedule [%s] Cyc is not set!", s.Name)
-		g.L.Warningln(e)
+		g.L.Warnf("[s.Timer] Schedule [%s] Cyc is not set!", s.Name)
 		return
 	}
-
+	now := time.Now()
 	for _, t := range s.Tasks {
-		t.NextTime()
+		t.NextTime(now)
 	}
 	var countDown time.Duration
-	//needDotasks := []*Task{}
 	for {
 
-		now := time.Now()
 		sort.Sort(byTime(s.Tasks))
 		countDown = time.Duration(0)
 		if len(s.Tasks) == 0 || s.Tasks[0].NextRunTime.IsZero() {
-			countDown, _ = getCountDown(s.Cyc, s.StartMonth, s.StartSecond)
+			countDown, _ = getCountDown(s.Cyc, []int{0}, []time.Duration{time.Duration(0)})
 			s.NextStart = time.Now().Add(countDown)
 		} else {
 			for _, t := range s.Tasks {
@@ -227,48 +227,34 @@ func (s *Schedule) Timer() { // {{{
 			}
 		}
 
-		/*	if len(needDotasks) > 0 && countDown > time.Duration(0) {
-			s.NextStart = now
-			countDown = 0
-			for _, t := range needDotasks {
-				t.NextRunTime = s.NextStart
-			}
-		}*/
-
-		es := ExecScheduleWarper(s)
-		g.Schedules.AddExecSchedule(es)
 		select {
 		case <-time.After(countDown):
+			es := ExecScheduleWarper(s)
+			g.Schedules.AddExecSchedule(es)
 			//构建执行结构链
 			err := es.InitExecSchedule()
 			if err != nil {
-				e := fmt.Sprintf("[s.Timer] Init Execschedule [%d %s] error %s.\n", s.Id, s.Name, err.Error())
-				g.L.Warningln(e)
-				return
+				g.L.Warnf("[s.Timer] Init Execschedule [%d %s] error %s.\n", s.Id, s.Name, err.Error())
+			} else {
+				//从元数据库初始化调度链信息
+				g.L.Infof("[s.Timer] schedule [%d %s] is start.\n", s.Id, s.Name)
+				//启动线程执行调度任务
+				go es.Run()
 			}
-			/*if len(needDotasks) > 0 {
-				es.AddExecTask(needDotasks)
-			}*/
-			//从元数据库初始化调度链信息
-			l := fmt.Sprintf("[s.Timer] schedule [%d %s] is start.\n", s.Id, s.Name)
-			g.L.Print(l)
-			//启动线程执行调度任务
-			go es.Run()
+			now = time.Now()
 			for _, t := range s.Tasks {
 				if t.NextRunTime == s.NextStart {
-					t.NextTime()
+					t.NextTime(now)
 				}
 			}
 		case t := <-s.doTaskChan:
-			//for _, t := range ts {
-			//needDotasks = append(needDotasks, t)
 			t.NextRunTime = now
-			//}
 		case t := <-s.updateTaskChan:
 			t.Refresh(s)
+		case batchID := <-s.delExecSchChan:
+			g.Schedules.RemoveExecSchedule(batchID)
 		case <-s.isRefresh:
-			l := fmt.Sprintf("[s.Timer] schedule [%d %s] is refresh.\n", s.Id, s.Name)
-			g.L.Println(l)
+			g.L.Infof("[s.Timer] schedule [%d %s] is refresh.\n", s.Id, s.Name)
 			return
 		}
 	}
@@ -307,18 +293,10 @@ func (s *Schedule) DoTask(tasks *Task) {
 	s.doTaskChan <- tasks
 }
 
-/*func (s *Schedule) doTask(tasks *Task) {
-	for _,t := s.Tasks {
-			for
-	}
-}*/
-
 //刷新Schedule
 func (s *Schedule) refresh() { // {{{
-
 	//发送消息停止监听
 	s.isRefresh <- true
-
 	//启动监听，按时启动Schedule
 	go s.Timer()
 
@@ -340,44 +318,6 @@ func (s *Schedule) GetTaskById(id int64) *Task { // {{{
 	}
 	return nil
 } // }}}
-
-//增加Task，将参数中的Task加入Schedule中，并调用其add方法持久化。
-/*func (s *Schedule) AddTask(task *Task) error { // {{{
-
-	s.updateTaskChan <- task
-
-	return nil
-} */ // }}}
-
-/*func (s *Schedule) updateTask(task *Task) error {
-	i := -1
-	for k, t := range s.Tasks {
-		if t.Id == task.Id {
-			i = k
-		}
-	}
-	if i == -1 {
-
-		s.Tasks = append(s.Tasks, task)
-		s.TaskCnt = len(s.Tasks)
-
-		j, err := s.GetJobById(task.JobId)
-		if err != nil {
-			e := fmt.Sprintf("\n[s.AddTask] not found job by id %d", task.JobId)
-			return errors.New(e)
-		}
-		j.Tasks[string(task.Id)] = task
-		j.TaskCnt++
-	} else {
-		t := s.Tasks[i]
-		t.Name, t.Desc, t.Address = task.Name, task.Desc, task.Address
-		t.TaskType, t.TaskCyc, t.StartSecond = task.TaskType, task.TaskCyc, task.StartSecond
-		t.Cmd, t.TimeOut, t.Param = task.Cmd, task.TimeOut, task.Param
-		t.Attr, t.ModifyUserId, t.ModifyTime = task.Attr, task.ModifyUserId, NowTimePtr()
-	}
-	return nil
-
-}*/
 
 //DeleteTask方法用来删除指定id的Task。首先会根据传入参数在Schedule的Tasks列
 //表中查出对应的Task。然后将其从Tasks列表中去除，将其从所属Job中去除，调用
@@ -419,23 +359,6 @@ func (s *Schedule) DeleteTask(id int64) error { // {{{
 
 	return err
 } // }}}
-
-/*func (s *Schedule) UpdateTask(task *Task) error {
-	s.updateTaskChan <- task
-	return nil
-
-}*/
-
-/*func (s *Schedule) updateTask(task *Task) error {
-	j, err := s.GetJobById(t.JobId)
-	if err != nil {
-		e := fmt.Sprintf("[UpdateTask] get job error %s.", err.Error())
-		g.L.Warningln(e)
-		return errors.New(e)
-	}
-
-	err = j.UpdateTask(task)
-}*/
 
 //GetJobById遍历Jobs列表，返回调度中指定Id的Job，若没找到返回nil
 func (s *Schedule) GetJobById(id int64) (*Job, error) { // {{{
@@ -580,13 +503,7 @@ func (s *Schedule) Delete() error { // {{{
 		}
 	}
 
-	err := s.delStart()
-	if err != nil {
-		e := fmt.Sprintf("\n[s.Delete] delStart error %s.", err.Error())
-		return errors.New(e)
-	}
-
-	err = s.deleteSchedule()
+	err := s.deleteSchedule()
 	if err != nil {
 		e := fmt.Sprintf("\n[s.Delete] deleteSchedule [%d] error %s.", s.Id, err.Error())
 		return errors.New(e)
@@ -599,44 +516,31 @@ func (s *Schedule) Delete() error { // {{{
 //需要注意的是：内存中的启动列表单位为纳秒，存储前需要转成秒
 //若成功则开始添加，失败返回err信息
 func (s *Schedule) AddScheduleStart() error { // {{{
-	err := s.delStart()
-	if err != nil {
-		e := fmt.Sprintf("\n[s.AddScheduleStart] delStart error %s.", err.Error())
-		return errors.New(e)
-	}
 
-	for i, st := range s.StartSecond {
-		err = s.addStart(time.Duration(st)/time.Second, s.StartMonth[i])
-		if err != nil {
-			e := fmt.Sprintf("\n[s.AddScheduleStart] error %s.", err.Error())
-			return errors.New(e)
-		}
-	}
-
-	return err
+	return nil
 } // }}}
 
 //启动时间排序
 //算法选择排序
 func (s *Schedule) sortStart() { // {{{
-	var i, j, k int
+	/*	var i, j, k int
 
-	for i = 0; i < len(s.StartMonth); i++ {
-		k = i
+		for i = 0; i < len(s.StartMonth); i++ {
+			k = i
 
-		for j = i + 1; j < len(s.StartMonth); j++ {
-			if s.StartMonth[j] < s.StartMonth[k] {
-				k = j
-			} else if (s.StartMonth[j] == s.StartMonth[k]) && (s.StartSecond[j] < s.StartSecond[k]) {
-				k = j
+			for j = i + 1; j < len(s.StartMonth); j++ {
+				if s.StartMonth[j] < s.StartMonth[k] {
+					k = j
+				} else if (s.StartMonth[j] == s.StartMonth[k]) && (s.StartSecond[j] < s.StartSecond[k]) {
+					k = j
+				}
 			}
-		}
 
-		if k != i {
-			s.StartMonth[k], s.StartMonth[i] = s.StartMonth[i], s.StartMonth[k]
-			s.StartSecond[k], s.StartSecond[i] = s.StartSecond[i], s.StartSecond[k]
-		}
+			if k != i {
+				s.StartMonth[k], s.StartMonth[i] = s.StartMonth[i], s.StartMonth[k]
+				s.StartSecond[k], s.StartSecond[i] = s.StartSecond[i], s.StartSecond[k]
+			}
 
-	}
+		}*/
 
 } // }}}

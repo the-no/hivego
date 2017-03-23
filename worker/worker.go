@@ -4,21 +4,24 @@ package worker
 
 import (
 	"bytes"
+	"github.com/51idc/go-sh"
 	"github.com/Sirupsen/logrus"
-	sh "github.com/rprp/go-sh"
 	"net"
 	"net/rpc"
 	"runtime"
 	"runtime/debug"
-	"strings"
+	//"strings"
 	"time"
 )
 
 var (
-
 	//全局log对象
 	l = logrus.New()
 	p = l.WithFields
+)
+
+const (
+	CMD = "sh"
 )
 
 func init() { // {{{
@@ -30,25 +33,26 @@ func init() { // {{{
 
 // 任务信息结构
 type Task struct {
-	Id          int64             // 任务的ID
-	Address     string            // 任务的执行地址
-	Name        string            // 任务名称
-	JobType     string            // 任务类型
-	Cyc         string            //调度周期
-	StartSecond int64             //周期内启动时间
-	Cmd         string            // 任务执行的命令或脚本、函数名等。
-	TimeOut     int64             // 设定超时时间，0表示不做超时限制。单位秒
-	Param       []string          // 任务的参数信息
-	Attr        map[string]string // 任务的属性信息
-	JobId       int64             //所属作业ID
-	RelTasks    map[int64]*Task   //依赖的任务
-	RelTaskCnt  int64             //依赖的任务数量
+	Id          int64  // 任务的ID
+	Address     string // 任务的执行地址
+	Name        string // 任务名称
+	JobType     string // 任务类型
+	Cyc         string //调度周期
+	StartSecond int64  //周期内启动时间
+	Cmd         string // 任务执行的命令或脚本、函数名等。
+	TimeOut     int64  // 设定超时时间，0表示不做超时限制。单位秒
+	//Param       []string          // 任务的参数信息
+	Attr       map[string]string // 任务的属性信息
+	JobId      int64             //所属作业ID
+	RelTasks   map[string]*Task  //依赖的任务
+	RelTaskCnt int64             //依赖的任务数量
 }
 
 //返回的消息
 type Reply struct {
 	Err    string //错误信息
 	Stdout string //标准输出
+	Stderr string //标准输出
 }
 
 //RPC结构
@@ -77,22 +81,15 @@ func runCmd(task *Task, reply *Reply) { // {{{
 		}
 	}()
 
-	var cmdArgs []string //执行的命令行参数
-	//从task结构中获取并组合命令参数
-	for _, v := range task.Param {
-		cmdArgs = append(cmdArgs, v)
-	}
-
-	cmd := strings.TrimSpace(task.Cmd)
-
+	cmdArgs := []string{"-c", task.Cmd}
 	//启动一个goroutine执行任务，超时则直接返回，
 	//正常结束则设置成功执行标志ok
 	//go func() {
-	out, err := sh.Command(cmd, cmdArgs).SetTimeout(time.Duration(task.TimeOut) * 1000 * time.Millisecond).Output()
-	reply.Stdout = string(out)
-	l.Infoln("StdOut:", string(out))
+	stdout, stderr, err := sh.Command(CMD, cmdArgs).SetTimeout(time.Duration(task.TimeOut) * 1000 * time.Millisecond).Output()
+	reply.Stdout = string(stdout)
+	reply.Stderr = string(stderr)
 	if err != nil {
-		reply.Err = "error"
+		reply.Err = "error :" + err.Error()
 		l.Warnln("error", err)
 		l.Warnln(task.Name, "is error TaskCmd=", task.Cmd, "TaskArg=", cmdArgs)
 		return

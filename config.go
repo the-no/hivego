@@ -5,7 +5,7 @@ import (
 	"log"
 )
 
-type HiveConfig struct {
+type Config struct {
 	Maxprocs        int                `toml:"maxprocs"`
 	Dbinfo          map[string]*dbinfo `toml:"dbinfo"`
 	ManagerPort     string             `toml:"managerport"`
@@ -22,7 +22,7 @@ type dbinfo struct {
 	Conn   string
 }
 
-func LoadHiveConfig(configPath string) (config *HiveConfig) {
+func LoadConfig(configPath string) (config *Config) {
 
 	if _, err := toml.DecodeFile(configPath, &config); err != nil {
 		log.Fatal("Error reading config: ", err)

@@ -45,6 +45,14 @@ type ExecSchedule struct { // {{{
 
 //初始化调度的执行结构，使之包含完整的执行链。
 func (es *ExecSchedule) InitExecSchedule() (err error) { // {{{
+	defer func() {
+		if err := recover(); err != nil {
+			var buf bytes.Buffer
+			buf.Write(debug.Stack())
+			g.L.Errorln("ExecSchedule Run Panic=", buf.String())
+			return
+		}
+	}()
 	if err = es.Log(); err != nil {
 		return errors.New(fmt.Sprintf("\n[es.InitExecSchedule] Save Log Failed %s", err.Error()))
 	}
@@ -110,8 +118,8 @@ func (es *ExecSchedule) TaskDone(et *ExecTask) (finish bool, err error) { // {{{
 	s := es.schedule
 	es.result = float32(s.TaskCnt-es.taskCnt) / float32(s.TaskCnt)
 	if es.taskCnt == 0 { //调度结束
-		g.Schedules.RemoveExecSchedule(es.batchId)
-
+		//g.Schedules.RemoveExecSchedule(es.batchId)
+		s.delExecSchChan <- es.batchId
 		//全部完成后，写入日志存储至数据库，设置下次启动时间
 		es.endTime = NowTimePtr()
 		es.state = 3
@@ -138,7 +146,14 @@ func (es *ExecSchedule) TaskDone(et *ExecTask) (finish bool, err error) { // {{{
 //全部执行结束后，设置Schedule的下次启动时间。
 func (es *ExecSchedule) Run() { // {{{
 	var err error
-
+	defer func() {
+		if err := recover(); err != nil {
+			var buf bytes.Buffer
+			buf.Write(debug.Stack())
+			g.L.Errorln("ExecSchedule Run Panic=", buf.String())
+			return
+		}
+	}()
 	if err = es.Start(); err != nil {
 		g.L.Warningln(fmt.Sprintf("\n[es.Run] %s", err.Error()))
 		return
@@ -172,10 +187,10 @@ func (es *ExecSchedule) Run() { // {{{
 				es.successTaskCnt++
 			} else if et.state == 2 {
 				es.failTaskCnt++ //暂停的也计入失败数量
-				g.L.Infoln("task", et.task.Name, "is pause batchTaskId[", et.batchTaskId, "] state=", et.state)
+				g.L.Debugln("task", et.task.Name, "is pause batchTaskId[", et.batchTaskId, "] state=", et.state)
 			} else {
 				es.failTaskCnt++
-				g.L.Infoln("task", et.task.Name, "is fail batchTaskId[", et.batchTaskId, "] state=", et.state)
+				g.L.Debugln("task", et.task.Name, "is fail batchTaskId[", et.batchTaskId, "] state=", et.state)
 			}
 
 			if err = et.execJob.TaskDone(et); err != nil {
@@ -274,7 +289,6 @@ func (ej *ExecJob) InitExecJob(es *ExecSchedule) (err error) { // {{{
 	//构建当前作业中的任务执行结构
 	for _, t := range ej.job.Tasks { // {{{
 		et := ExecTaskWarper(ej, t)
-		//	fmt.Println(t.Name, t.NextRunTime, es.schedule.NextStart)
 		if es.schedule.NextStart == t.NextRunTime {
 			ej.execTasks[t.Id] = et
 			es.execTasks[t.Id] = et
@@ -319,7 +333,7 @@ func (ej *ExecJob) TaskDone(et *ExecTask) (err error) { // {{{
 			ej.state = 4
 			err = errors.New(fmt.Sprintf("\n[ej.TaskDone] %s", err.Error()))
 		}
-		g.L.Infoln("job ", ej.job.Name, " is end ", " batchJobId[", ej.batchJobId, "] result=", ej.result)
+		g.L.Debugln("job ", ej.job.Name, " is end ", " batchJobId[", ej.batchJobId, "] result=", ej.result)
 	}
 
 	return err
@@ -327,19 +341,22 @@ func (ej *ExecJob) TaskDone(et *ExecTask) (err error) { // {{{
 
 //任务执行信息结构
 type ExecTask struct { // {{{
-	batchTaskId   string              //任务批次ID，作业批次ID + 任务ID
-	batchJobId    string              //作业批次ID，批次ID + 作业ID
-	batchId       string              //批次ID，规则scheduleId + 周期开始时间(不含周期内启动时间)
-	task          *Task               //任务
-	startTime     *time.Time          //开始时间
-	endTime       *time.Time          //结束时间
-	state         int8                //状态 0.初始状态 1. 执行中 2. 暂停 3. 完成 4.意外中止 5.忽略
-	execType      int8                //执行类型 1. 自动定时调度 2.手动人工调度 3.修复执行
-	execJob       *ExecJob            //任务所属作业
-	output        string              //任务输出
+	batchTaskId   string     //任务批次ID，作业批次ID + 任务ID
+	batchJobId    string     //作业批次ID，批次ID + 作业ID
+	batchId       string     //批次ID，规则scheduleId + 周期开始时间(不含周期内启动时间)
+	task          *Task      //任务
+	startTime     *time.Time //开始时间
+	endTime       *time.Time //结束时间
+	state         int8       //状态 0.初始状态 1. 执行中 2. 暂停 3. 完成 4.意外中止 5.忽略
+	execType      int8       //执行类型 1. 自动定时调度 2.手动人工调度 3.修复执行
+	execJob       *ExecJob   //任务所属作业
+	output        string     //任务输出
+	stderr        string
+	errstr        string              //任务输出
 	nextExecTasks map[int64]*ExecTask //下级任务执行信息
 	relExecTasks  map[int64]*ExecTask //依赖的任务
 	LogId         int                 //调度日志Id
+	Retry         int
 } // }}}
 
 //根据传入的batchId和Job参数来构建一个调度的执行结构，并返回。
@@ -350,7 +367,8 @@ func ExecTaskWarper(ej *ExecJob, t *Task) *ExecTask { // {{{
 		batchId:       ej.batchId,
 		task:          t,
 		state:         0,
-		execType:      t.ExecType,
+		execType:      t.TaskType,
+		Retry:         t.Retry,
 		execJob:       ej,
 		relExecTasks:  make(map[int64]*ExecTask),
 		nextExecTasks: make(map[int64]*ExecTask),
@@ -364,12 +382,10 @@ func (et *ExecTask) InitExecTask(es *ExecSchedule) error { // {{{
 		e := fmt.Sprintf("\n[et.InitExecTask] %s %s", et.task.Name, err.Error())
 		return errors.New(e)
 	}
-
 	for _, relTask := range et.task.RelTasks {
 		retask := es.execTasks[relTask.Id]
 		et.relExecTasks[relTask.Id] = retask
-
-		fmt.Printf("task : %v, reltask : %v retask :%v ", et.task, relTask, retask)
+		fmt.Println("rel :", relTask.Id, retask)
 		//将execTask设置为依赖任务的下级任务
 		retask.nextExecTasks[et.task.Id] = et
 	}
@@ -379,6 +395,7 @@ func (et *ExecTask) InitExecTask(es *ExecSchedule) error { // {{{
 type Reply struct { // {{{
 	Err    string //错误信息
 	Stdout string //标准输出
+	Stderr string //标准输出
 } // }}}
 
 //Run方法负责执行任务。
@@ -411,67 +428,54 @@ func (et *ExecTask) Run(taskChan chan *ExecTask) { // {{{
 
 	et.startTime = NowTimePtr()
 	et.state = 1
-	//判断是否在执行周期内,若是则直接执行，否则跳过返回执行完成的状态，并继续下一步骤
-	//if et.task.TaskCyc != "" && !et.isReady() {
-	/*	if et.task.TaskCyc != "" && !et.isReady() {
-		et.state = 5
-		et.output = "task is ignored"
-		//g.L.Infoln("task", et.task.Name, "is ignore batchTaskId[", et.batchTaskId, "]")
-		//et.Log()
-		taskChan <- et
-		return
-	}*/
 	et.Log()
-	g.L.Infoln("task", et.task.Name,
+	g.L.Debugln("task", et.task.Name,
 		"is start batchTaskId[", et.batchTaskId, "] cmd =",
-		et.task.Cmd, " arg=", et.task.Param)
+		et.task.Cmd)
 
 	//执行任务
 	task := et.task
 	et.state = 3
-
-	if client, err := rpc.Dial("tcp", et.task.Address+g.Port); err == nil {
-		err = client.Call("CmdExecuter.Run", task, &rl)
-		if rl.Err != "" {
-			et.output = rl.Err
-			et.state = 4
-			g.L.Infoln("task", et.task.Name, "is error", rl.Stdout)
+	var client *rpc.Client
+	var err error
+	for i := et.Retry; i > 0; i -= 1 {
+		client, err = rpc.Dial("tcp", et.task.Address+g.Port)
+		if err == nil {
+			err = client.Call("CmdExecuter.Run", task, &rl)
+			if err == nil {
+				if rl.Err != "" {
+					//et.output = rl.Err
+					et.errstr = rl.Err
+					g.L.Infoln("task", et.task.Name, "is error", rl.Err == "")
+				} else {
+					client.Close()
+					break
+				}
+			} else {
+				g.L.Errorf("task", et.task.Name, "is error", err.Error())
+			}
+			client.Close()
+		} else {
+			g.L.Errorf("connect task.Address[%s] error %s\n", et.task.Address+g.Port,
+				err.Error())
 		}
-		client.Close()
-	} else {
-		e := fmt.Sprintf("connect task.Address[%s] error %s", et.task.Address+g.Port,
-			err.Error())
-		fmt.Println(err)
-		panic(e)
+		time.Sleep(500 * time.Millisecond)
+	}
+	if err != nil || rl.Err != "" {
+		et.state = 4
 	}
 
-	et.output = et.output + rl.Stdout
+	et.output = rl.Stdout
+	et.stderr = rl.Stderr
 	et.endTime = NowTimePtr()
 	et.Log()
 
-	g.L.Infoln("task", et.task.Name, "is end batchTaskId[", et.batchTaskId, "] state =",
+	g.L.Debugln("task", et.task.Name, "is end batchTaskId[", et.batchTaskId, "] state =",
 		et.state, "StartTime", et.startTime, "EndTime", et.endTime)
 
 	taskChan <- et
 
 } // }}}
-
-//isReady方法会根据Task的调度周期与启动时间判断是否符合执行条件
-//符合返回true，反之false
-/*func (et *ExecTask) isReady() (b bool) { // {{{
-	//td := TruncDate(et.task.TaskCyc, time.Now().Local()).Add(et.task.StartSecond)
-	now := time.Now().Local()
-	sd := TruncDate(et.task.TaskCyc, now)
-	fmt.Println(et.task.Name, et.task.NextRunTime, sd, TruncDate(et.task.TaskCyc, et.task.NextRunTime), sd == et.task.NextRunTime)
-	if TruncDate(et.task.TaskCyc, et.task.NextRunTime) == sd {
-		b = true
-		et.task.NextTime()
-	} else if now.After(et.task.NextRunTime) {
-		fmt.Println("after -----------------")
-		et.task.NextTime()
-	}
-	return b
-}*/ // }}}
 
 //ExecSchedule.Restore(batchId string)方法修复执行指定的调度。
 //根据传入的batchId，构建调度执行结构，并调用Run方法执行其中的任务

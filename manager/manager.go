@@ -6,7 +6,7 @@ import (
 	"github.com/martini-contrib/binding"
 	"github.com/martini-contrib/render"
 	"github.com/martini-contrib/web"
-	"github.com/the-no/hivego/schedule"
+	"gitlab.51idc.com/hds/scheduling/schedule"
 	"log"
 	"net/http"
 	"strconv"
@@ -49,47 +49,6 @@ func controller(m *martini.ClassicMartini) { // {{{
 	m.Get("/", func(r render.Render) {
 		r.HTML(200, "index", nil)
 	})
-
-	/*	m.Group("/schedules", func(r martini.Router) {
-		//Schedule部分
-		r.Get("", GetSchedules)
-		r.Post("", binding.Bind(schedule.Schedule{}), AddSchedule)
-		r.Get("/:id", GetScheduleById)
-		r.Put("/:id", binding.Bind(schedule.Schedule{}), UpdateSchedule)
-		r.Delete("/:id", DeleteSchedule)
-
-		//Job部分
-		r.Get("/:sid/jobs", GetJobsForSchedule)
-		r.Post("/:sid/jobs", binding.Bind(schedule.Job{}), AddJob)
-		r.Put("/:sid/jobs/:id", binding.Bind(schedule.Job{}), UpdateJob)
-		r.Delete("/:sid/jobs/:id", DeleteJob)
-
-		//Task部分
-		r.Post("/:sid/jobs/:jid/tasks", binding.Bind(schedule.Task{}), AddTask)
-		r.Put("/:sid/jobs/:jid/tasks/:id", binding.Bind(schedule.Task{}), UpdateTask)
-		r.Delete("/:sid/jobs/:jid/tasks/:id", DeleteTask)
-
-		//TaskRelation部分
-		r.Post("/:sid/jobs/:jid/tasks/:id/reltask/:relid", AddRelTask)
-		r.Delete("/:sid/jobs/:jid/tasks/:id/reltask/:relid", DeleteRelTask)
-	})*/
-
-	/*m.Group("/jobs", func(r martini.Router) {
-		//Job部分
-		r.Get("/:id", GetJobsForSchedule)
-		r.Post("", binding.Bind(schedule.Job{}), AddJob)
-		r.Put("/:id", binding.Bind(schedule.Job{}), UpdateJob)
-		r.Delete("/:id", DeleteJob)
-
-		//Task部分
-		r.Post("/:jid/tasks", binding.Bind(schedule.Task{}), AddTask)
-		r.Put("/:jid/tasks/:id", binding.Bind(schedule.Task{}), UpdateTask)
-		r.Delete("/:jid/tasks/:id", DeleteTask)
-
-		//TaskRelation部分
-		r.Post("/jid/tasks/:id/reltask/:relid", AddRelTask)
-		r.Delete("/:jid/tasks/:id/reltask/:relid", DeleteRelTask)
-	})*/
 
 	m.Group("/tasks", func(r martini.Router) {
 		//Task部分
@@ -162,8 +121,8 @@ func UpdateSchedule(params martini.Params, r render.Render, Ss *schedule.Schedul
 	}
 	fmt.Println(scd)
 	if s := Ss.GetScheduleById(int64(scd.Id)); s != nil {
-		s.Name, s.Desc, s.Cyc, s.StartMonth = scd.Name, scd.Desc, scd.Cyc, scd.StartMonth
-		s.StartSecond, s.ModifyTime, s.ModifyUserId = scd.StartSecond, time.Now(), scd.ModifyUserId
+		s.Name, s.Desc, s.Cyc = scd.Name, scd.Desc, scd.Cyc
+		s.ModifyTime, s.ModifyUserId = time.Now(), scd.ModifyUserId
 		if err := s.UpdateSchedule(); err != nil {
 			e := fmt.Sprintf("[UpdateSchedule] update schedule error %s.", err.Error())
 			g.L.Warningln(e)
@@ -308,7 +267,7 @@ func AddTask(params martini.Params, r render.Render, Ss *schedule.ScheduleManage
 	}
 
 	t := &task
-	t.TaskType = 1
+	//t.TaskType = 1
 	t.CreateUserId = 1
 	t.ModifyUserId = 1
 	t.CreateTime = NowTimePtr()
@@ -400,7 +359,8 @@ func UpdateTask(params martini.Params, r render.Render, Ss *schedule.ScheduleMan
 		t := s.GetTaskById(int64(id))
 		t.Name, t.Desc, t.Address = task.Name, task.Desc, task.Address
 		t.TaskType, t.TaskCyc, t.StartSecond = task.TaskType, task.TaskCyc, task.StartSecond
-		t.Cmd, t.TimeOut, t.Param = task.Cmd, task.TimeOut, task.Param
+		t.Cmd, t.TimeOut = task.Cmd, task.TimeOut
+		t.Cronstr, t.Retry, t.Concurrent = task.Cronstr, task.Retry, task.Concurrent
 		t.Attr, t.ModifyUserId, t.ModifyTime = task.Attr, task.ModifyUserId, NowTimePtr()
 		if err := t.UpdateTask(); err != nil {
 			e := fmt.Sprintf("\n[UpdateTask] UpdateTask error %s.", err.Error())
